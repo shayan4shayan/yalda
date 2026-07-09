@@ -1,0 +1,10 @@
+[
+  {
+    "id": "mlkit_en_fa",
+    "name": "ML Kit English to Persian",
+    "sizeMb": 30,
+    "runtime": "mlkit",
+    "sourceLanguage": "en",
+    "targetLanguage": "fa"
+  }
+]
