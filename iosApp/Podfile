@@ -5,3 +5,55 @@ target 'iosApp' do
 
   pod 'GoogleMLKit/Translate', '8.0.0'
 end
+
+post_install do |_installer|
+  Dir.glob(File.join(__dir__, 'Pods/Target Support Files/**/*.xcconfig')).each do |path|
+    content = File.read(path)
+    content.gsub!(/^EXCLUDED_ARCHS\[sdk=iphonesimulator\*\] = arm64\n/, '')
+
+    if File.basename(path).start_with?('Pods-iosApp.')
+      content.gsub!(/^OTHER_LDFLAGS\[sdk=iphonesimulator\*\] = .*\n/, '')
+      content.gsub!(/^FRAMEWORK_SEARCH_PATHS\[sdk=iphonesimulator\*\] = .*\n/, '')
+      content.gsub!(/^HEADER_SEARCH_PATHS\[sdk=iphonesimulator\*\] = .*\n/, '')
+      content.gsub!(/^OTHER_MODULE_VERIFIER_FLAGS\[sdk=iphonesimulator\*\] = .*\n/, '')
+
+      ldflags = content[/^OTHER_LDFLAGS = (.*)$/, 1]
+      if ldflags
+        simulator_ldflags = ldflags
+          .gsub(/ -framework "MLKitCommon"/, '')
+          .gsub(/ -framework "MLKitNaturalLanguage"/, '')
+          .gsub(/ -framework "MLKitTranslate"/, '')
+        content << "OTHER_LDFLAGS[sdk=iphonesimulator*] = #{simulator_ldflags}\n"
+      end
+
+      framework_paths = content[/^FRAMEWORK_SEARCH_PATHS = (.*)$/, 1]
+      if framework_paths
+        simulator_framework_paths = framework_paths
+          .gsub(%r{ "\$\{PODS_ROOT\}/MLKitCommon/Frameworks"}, '')
+          .gsub(%r{ "\$\{PODS_ROOT\}/MLKitNaturalLanguage/Frameworks"}, '')
+          .gsub(%r{ "\$\{PODS_ROOT\}/MLKitTranslate/Frameworks"}, '')
+        content << "FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*] = #{simulator_framework_paths}\n"
+      end
+
+      header_paths = content[/^HEADER_SEARCH_PATHS = (.*)$/, 1]
+      if header_paths
+        simulator_header_paths = header_paths
+          .gsub(%r{ "\$\{PODS_ROOT\}/Headers/Public/GoogleMLKit"}, '')
+          .gsub(%r{ \$\{PODS_ROOT\}/GoogleMLKit/MLKitCore/Sources}, '')
+        content << "HEADER_SEARCH_PATHS[sdk=iphonesimulator*] = #{simulator_header_paths}\n"
+      end
+
+      module_flags = content[/^OTHER_MODULE_VERIFIER_FLAGS = (.*)$/, 1]
+      if module_flags
+        simulator_module_flags = module_flags
+          .gsub(%r{ "-F\$\{PODS_CONFIGURATION_BUILD_DIR\}/GoogleMLKit"}, '')
+          .gsub(%r{ "-F\$\{PODS_CONFIGURATION_BUILD_DIR\}/MLKitCommon"}, '')
+          .gsub(%r{ "-F\$\{PODS_CONFIGURATION_BUILD_DIR\}/MLKitNaturalLanguage"}, '')
+          .gsub(%r{ "-F\$\{PODS_CONFIGURATION_BUILD_DIR\}/MLKitTranslate"}, '')
+        content << "OTHER_MODULE_VERIFIER_FLAGS[sdk=iphonesimulator*] = #{simulator_module_flags}\n"
+      end
+    end
+
+    File.write(path, content)
+  end
+end

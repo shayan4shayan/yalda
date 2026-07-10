@@ -1,5 +1,34 @@
 import Foundation
 import ComposeApp
+
+#if targetEnvironment(simulator)
+
+final class IOSMlKitTranslationBridge: NSObject, IosNativeTranslationBridge {
+    var isSupported: Bool {
+        false
+    }
+
+    func isModelDownloaded(modelId: String, callback: IosBooleanCallback) {
+        callback.complete(value: false, errorMessage: nil)
+    }
+
+    func downloadModel(modelId: String, callback: IosBooleanCallback) {
+        callback.complete(value: false, errorMessage: "Offline translation is not available in the iOS Simulator.")
+    }
+
+    func cancelModelDownload(modelId: String) {}
+
+    func deleteModel(modelId: String, callback: IosBooleanCallback) {
+        callback.complete(value: false, errorMessage: "Offline translation is not available in the iOS Simulator.")
+    }
+
+    func translate(text: String, modelId: String, callback: IosStringCallback) {
+        callback.complete(value: nil, errorMessage_: "Offline translation is not available in the iOS Simulator.")
+    }
+}
+
+#else
+
 import MLKitCommon
 import MLKitTranslate
 
@@ -148,3 +177,5 @@ final class IOSMlKitTranslationBridge: NSObject, IosNativeTranslationBridge {
         failureObserver = nil
     }
 }
+
+#endif
