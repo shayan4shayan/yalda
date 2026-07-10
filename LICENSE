@@ -1,0 +1,70 @@
+Yalda Non-Free Commercial Software Restriction License
+Version 1.0
+
+Copyright (c) 2026 Yalda contributors
+
+Permission is granted to use, copy, modify, merge, publish, and distribute this
+project, including modified versions, only for the permitted uses below and
+subject to all terms of this license.
+
+1. Permitted Uses
+
+You may use this project for:
+
+- personal, educational, academic, research, or evaluation purposes;
+- non-commercial projects;
+- free software or open-source software projects, provided the complete source
+  code of the project using this software is made available to its recipients
+  under a license that allows use, copying, modification, and redistribution.
+
+2. Prohibited Uses
+
+You may not use this project, in whole or in part, in or for any Non-Free
+Commercial Software.
+
+"Non-Free Commercial Software" means any software application, software product,
+hosted software service, SDK, library, platform, or other software-based offering
+that:
+
+- is sold, licensed, subscribed to, rented, paywalled, monetized, or otherwise
+  provided for commercial advantage or monetary compensation; and
+- is not made available to all recipients as free software or open-source
+  software with the complete corresponding source code under a license that
+  allows use, copying, modification, and redistribution.
+
+This prohibition includes using this project in proprietary paid apps,
+subscription software, paid SaaS products, commercial closed-source products,
+commercial SDKs, or any other non-free commercial software offering.
+
+3. Notices
+
+Any copy or substantial portion of this project must include this license file
+and all copyright notices.
+
+4. Third-Party Software
+
+This license applies only to this project. Third-party dependencies, SDKs,
+frameworks, libraries, assets, and other included materials remain governed by
+their own licenses.
+
+5. No Trademark License
+
+This license does not grant permission to use the names, logos, trademarks, or
+branding of the project or its contributors except as required for reasonable
+license notice and attribution.
+
+6. Termination
+
+Any use of this project in violation of this license automatically terminates
+all rights granted to you under this license. Upon termination, you must stop
+using, copying, modifying, distributing, or making available this project and any
+derived work that uses it.
+
+7. Disclaimer of Warranty
+
+THIS PROJECT IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THIS PROJECT OR THE USE OR OTHER DEALINGS IN THIS PROJECT.
