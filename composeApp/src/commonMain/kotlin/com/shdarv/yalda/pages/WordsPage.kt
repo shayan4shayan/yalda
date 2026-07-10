@@ -270,8 +270,8 @@ private fun WordEditDialog(
             targetLanguage != null &&
             modelState.model.supports(sourceLanguage, targetLanguage)
     }
-    val showTranslate = modelState != null && translationState.isSupported
-    val canTranslate = showTranslate && word.trim().isNotEmpty()
+    val isTranslationBusy = translationState.isTranslating || modelState?.isBusy == true
+    val canTranslate = word.trim().isNotEmpty() && !isTranslationBusy
 
     fun handleTranslationResult(result: TranslationResult) {
         when (result) {
@@ -293,8 +293,12 @@ private fun WordEditDialog(
     }
 
     fun requestTranslation() {
-        val source = sourceLanguage ?: return
-        val target = targetLanguage ?: return
+        val source = sourceLanguage
+        val target = targetLanguage
+        if (source == null || target == null) {
+            translationMessage = "Select a profile before using translation."
+            return
+        }
         translationViewModel.translate(
             text = word,
             sourceLanguage = source,
@@ -323,17 +327,15 @@ private fun WordEditDialog(
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
-                    if (showTranslate) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        IconButton(
-                            onClick = { requestTranslation() },
-                            enabled = canTranslate && !translationState.isTranslating && modelState?.isBusy != true
-                        ) {
-                            if (translationState.isTranslating || modelState?.isBusy == true) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Outlined.Translate, contentDescription = "Translate word")
-                            }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    IconButton(
+                        onClick = { requestTranslation() },
+                        enabled = canTranslate
+                    ) {
+                        if (isTranslationBusy) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Outlined.Translate, contentDescription = "Translate word")
                         }
                     }
                 }

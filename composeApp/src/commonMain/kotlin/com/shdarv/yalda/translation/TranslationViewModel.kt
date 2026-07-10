@@ -149,6 +149,11 @@ class TranslationViewModel(
             return
         }
 
+        if (!service.isSupported) {
+            onResult(TranslationResult.Failure("Offline translation is not available on this device."))
+            return
+        }
+
         viewModelScope.launch {
             if (!service.isModelDownloaded(model.id)) {
                 refreshModels()
