@@ -81,7 +81,7 @@ Run iOS from Xcode:
 3. Select the `iosApp` scheme and a simulator or device.
 4. Build and run.
 
-The Xcode project runs `./gradlew :composeApp:embedAndSignAppleFrameworkForXcode` during the iOS build to produce the shared Kotlin framework.
+The Xcode project runs `./gradlew :composeApp:embedAndSignAppleFrameworkForXcode` during the iOS build to produce the shared Kotlin framework. This build phase unsets `OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED` so Xcode builds always refresh the shared Kotlin/iOS framework instead of using stale generated sources.
 
 ## Tests and Checks
 
