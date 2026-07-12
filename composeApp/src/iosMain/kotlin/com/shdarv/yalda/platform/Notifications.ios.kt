@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import platform.Foundation.NSCalendar
 import platform.Foundation.NSCalendarUnitDay
+import platform.Foundation.NSCalendarUnitHour
+import platform.Foundation.NSCalendarUnitMinute
 import platform.Foundation.NSCalendarUnitMonth
 import platform.Foundation.NSCalendarUnitYear
 import platform.Foundation.NSDate
@@ -50,9 +52,7 @@ private class IosNotificationScheduler : NotificationScheduler {
         center.requestAuthorizationWithOptions(
             options = UNAuthorizationOptionAlert or UNAuthorizationOptionSound
         ) { granted, _ ->
-            if (granted != null) {
-                authorized = granted
-            }
+            authorized = granted
         }
     }
 
@@ -67,9 +67,13 @@ private class IosNotificationScheduler : NotificationScheduler {
             if (ids.isNotEmpty()) {
                 center.removePendingNotificationRequestsWithIdentifiers(ids)
             }
+            if (enabled) {
+                schedulePendingNotifications(profileId, schedule)
+            }
         }
-        if (!enabled) return
+    }
 
+    private fun schedulePendingNotifications(profileId: Long, schedule: NotificationSchedule) {
         CoroutineScope(Dispatchers.Default).launch {
             if (!database.isInitialized()) {
                 database.init()
@@ -78,6 +82,11 @@ private class IosNotificationScheduler : NotificationScheduler {
             if (words.isEmpty()) return@launch
             val calendar = NSCalendar.currentCalendar
             val now = NSDate()
+            val nowComponents = calendar.components(
+                NSCalendarUnitHour or NSCalendarUnitMinute,
+                fromDate = now
+            )
+            val nowMinutes = nowComponents.hour.toInt() * 60 + nowComponents.minute.toInt()
 
             when (schedule.strategy) {
                 NotificationStrategy.ExactTimes -> {
@@ -87,6 +96,9 @@ private class IosNotificationScheduler : NotificationScheduler {
                             unit = NSCalendarUnitDay, value = offset.toLong(), toDate = now, options = 0u
                         ) ?: continue
                         schedule.times.forEach { time ->
+                            val timeMinutes = time.hour * 60 + time.minute
+                            if (offset == 0 && timeMinutes <= nowMinutes) return@forEach
+
                             val components = calendar.components(
                                 NSCalendarUnitYear or NSCalendarUnitMonth or NSCalendarUnitDay, fromDate = date
                             ).apply {
@@ -123,6 +135,12 @@ private class IosNotificationScheduler : NotificationScheduler {
                             val intervalMinutes = range.intervalMinutes.coerceAtLeast(1)
                             if (endMinutes <= startMinutes) return@forEach
                             var minuteOfDay = startMinutes
+                            if (offset == 0) {
+                                if (nowMinutes >= endMinutes) return@forEach
+                                while (minuteOfDay <= nowMinutes) {
+                                    minuteOfDay += intervalMinutes
+                                }
+                            }
                             while (minuteOfDay <= endMinutes) {
                                 val components = calendar.components(
                                     NSCalendarUnitYear or NSCalendarUnitMonth or NSCalendarUnitDay, fromDate = date

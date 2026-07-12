@@ -22,14 +22,15 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -134,7 +136,7 @@ fun LearnPage(profileId: Long?) {
             NoticeCard(
                 icon = Icons.Outlined.Notifications,
                 title = "Permission required",
-                message = "Allow notifications to receive scheduled word reminders.",
+                message = "Allow reminder permissions so scheduled words can arrive on time.",
                 actionLabel = "Allow",
                 onAction = { scheduler.requestPermission() }
             )
@@ -700,22 +702,76 @@ private fun NumberField(
     onClearFocus: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+
+    fun commitValue(nextValue: Int) {
+        val coerced = nextValue.coerceIn(range)
+        text = coerced.toString()
+        onValueChange(coerced)
+    }
+
+    fun restoreIfBlank() {
+        if (text.isBlank()) {
+            text = value.toString()
+        }
+    }
+
     OutlinedTextField(
-        value = value.toString(),
-        onValueChange = { text ->
-            text.toIntOrNull()?.let { onValueChange(it.coerceIn(range)) }
+        value = text,
+        onValueChange = { nextText ->
+            val digits = nextText.filter { it.isDigit() }
+            if (digits.isEmpty()) {
+                text = ""
+                return@OutlinedTextField
+            }
+            val parsed = digits.toIntOrNull() ?: return@OutlinedTextField
+            val coerced = parsed.coerceIn(range)
+            text = if (parsed == coerced) digits else coerced.toString()
+            onValueChange(coerced)
         },
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { focusState ->
+            if (!focusState.isFocused) restoreIfBlank()
+        },
         label = { Text(label) },
         singleLine = true,
         shape = RoundedCornerShape(12.dp),
+        leadingIcon = {
+            IconButton(
+                onClick = { commitValue(value - 1) },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.Remove,
+                    contentDescription = "Decrease $label",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        },
+        trailingIcon = {
+            IconButton(
+                onClick = { commitValue(value + 1) },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.Add,
+                    contentDescription = "Increase $label",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        },
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Number,
             imeAction = imeAction
         ),
         keyboardActions = KeyboardActions(
-            onNext = { onClearFocus() },
-            onDone = { onClearFocus() }
+            onNext = {
+                restoreIfBlank()
+                onClearFocus()
+            },
+            onDone = {
+                restoreIfBlank()
+                onClearFocus()
+            }
         )
     )
 }
@@ -783,7 +839,7 @@ private fun ReminderActions(
             shape = RoundedCornerShape(12.dp),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
         ) {
-            Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text("Sample", maxLines = 1)
         }
