@@ -18,6 +18,20 @@ actual class AppSettingsStore(private val preferences: SharedPreferences) {
     actual fun putInt(key: String, value: Int) {
         preferences.edit { putInt(key, value) }
     }
+
+    actual fun getLong(key: String, defaultValue: Long): Long =
+        preferences.getLong(key, defaultValue)
+
+    actual fun putLong(key: String, value: Long) {
+        preferences.edit { putLong(key, value) }
+    }
+
+    actual fun getString(key: String, defaultValue: String): String =
+        preferences.getString(key, defaultValue) ?: defaultValue
+
+    actual fun putString(key: String, value: String) {
+        preferences.edit { putString(key, value) }
+    }
 }
 
 fun appSettings.init(context: Context) {

@@ -3,7 +3,6 @@ package com.shdarv.yalda.translation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,121 +12,92 @@ import kotlinx.coroutines.launch
 
 data class TranslationUiState(
     val isSupported: Boolean = false,
-    val models: List<TranslationModelState> = emptyList(),
+    val activePair: TranslationPair? = null,
+    val languagePacks: List<TranslationLanguagePackState> = emptyList(),
+    val isPairReady: Boolean = false,
     val isRefreshing: Boolean = false,
     val isTranslating: Boolean = false,
+    val isDownloadingPair: Boolean = false,
     val message: String? = null
 )
 
 class TranslationViewModel(
     private val service: LocalTranslationService = localTranslations.get()
 ) : ViewModel() {
-    private val downloadJobs = mutableMapOf<String, Job>()
-
+    private var downloadJob: Job? = null
     private val _uiState = MutableStateFlow(
         TranslationUiState(
             isSupported = service.isSupported,
-            models = service.availableModels().map { TranslationModelState(model = it) }
+            languagePacks = service.availableLanguages().map(::TranslationLanguagePackState)
         )
     )
     val uiState: StateFlow<TranslationUiState> = _uiState.asStateFlow()
 
-    init {
-        refresh()
-    }
+    init { refresh() }
 
-    fun refresh() {
-        viewModelScope.launch {
-            refreshModels()
+    fun setActivePair(sourceLanguage: String?, targetLanguage: String?) {
+        val pair = if (sourceLanguage == null || targetLanguage == null) null
+        else TranslationCatalog.pairFor(sourceLanguage, targetLanguage)
+        if (_uiState.value.activePair != pair) {
+            _uiState.update { it.copy(activePair = pair, message = null, isPairReady = false) }
+            refresh()
         }
     }
 
-    fun downloadModel(modelId: String, onComplete: ((Boolean) -> Unit)? = null) {
-        if (downloadJobs[modelId]?.isActive == true) return
+    fun refresh() {
+        viewModelScope.launch { refreshState() }
+    }
 
-        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+    fun downloadActivePair(wifiOnly: Boolean = true, onComplete: ((Boolean) -> Unit)? = null) {
+        val pair = _uiState.value.activePair ?: return
+        if (downloadJob?.isActive == true) return
+        downloadJob = viewModelScope.launch {
             var success = false
             try {
-                setModelDownloadState(
-                    modelId = modelId,
-                    isBusy = true,
-                    progress = null,
-                    status = "Starting download..."
-                )
-
-                val result = service.downloadModel(modelId) { progress ->
-                    setModelDownloadState(
-                        modelId = modelId,
-                        isBusy = true,
-                        progress = progress.progress,
-                        status = progress.message
-                    )
+                _uiState.update {
+                    it.copy(isDownloadingPair = true, message = "Preparing ${pair.displayName}...")
+                }
+                val result = service.downloadPair(pair, wifiOnly) { progress ->
+                    _uiState.update { it.copy(message = progress.message) }
                 }
                 success = result is TranslationDownloadResult.Success
-
-                refreshModels(
-                    message = when (result) {
-                        is TranslationDownloadResult.Success -> "${result.model.name} is ready."
-                        TranslationDownloadResult.Canceled -> "Model download canceled."
+                refreshState(
+                    when (result) {
+                        is TranslationDownloadResult.Success -> result.message
+                        TranslationDownloadResult.Canceled -> "Translation download canceled."
                         is TranslationDownloadResult.Failure -> result.message
                     }
                 )
             } catch (exception: CancellationException) {
-                service.cancelModelDownload(modelId)
-                setMessage("Model download canceled.")
+                service.cancelPairDownload(pair)
+                _uiState.update { it.copy(message = "Translation download canceled.") }
             } finally {
-                downloadJobs.remove(modelId)
-                setModelDownloadState(
-                    modelId = modelId,
-                    isBusy = false,
-                    progress = null,
-                    status = null
-                )
+                _uiState.update { it.copy(isDownloadingPair = false) }
+                downloadJob = null
                 onComplete?.invoke(success)
             }
         }
-        downloadJobs[modelId] = job
-        job.start()
     }
 
-    fun cancelModelDownload(modelId: String) {
-        service.cancelModelDownload(modelId)
-        val job = downloadJobs.remove(modelId)
-        if (job != null) {
-            job.cancel()
-        } else {
-            setModelDownloadState(
-                modelId = modelId,
-                isBusy = false,
-                progress = null,
-                status = null
-            )
-            setMessage("Model download canceled.")
-        }
+    fun cancelPairDownload() {
+        _uiState.value.activePair?.let(service::cancelPairDownload)
+        downloadJob?.cancel()
+        downloadJob = null
+        _uiState.update { it.copy(isDownloadingPair = false, message = "Translation download canceled.") }
     }
 
-    fun deleteModel(modelId: String) {
+    fun deleteLanguagePack(languageCode: String) {
         viewModelScope.launch {
-            setModelDownloadState(
-                modelId = modelId,
-                isBusy = true,
-                progress = null,
-                status = "Deleting model..."
-            )
-            val result = service.deleteModel(modelId)
-            refreshModels(
-                message = when (result) {
-                    is TranslationDownloadResult.Success -> "${result.model.name} was removed."
-                    TranslationDownloadResult.Canceled -> "Model action canceled."
+            setPackBusy(languageCode, true)
+            val result = service.deleteLanguagePack(languageCode)
+            refreshState(
+                when (result) {
+                    is TranslationDownloadResult.Success -> result.message
+                    TranslationDownloadResult.Canceled -> "Language pack action canceled."
                     is TranslationDownloadResult.Failure -> result.message
                 }
             )
-            setModelDownloadState(
-                modelId = modelId,
-                isBusy = false,
-                progress = null,
-                status = null
-            )
+            setPackBusy(languageCode, false)
         }
     }
 
@@ -142,27 +112,23 @@ class TranslationViewModel(
             onResult(TranslationResult.Failure("Enter a word to translate."))
             return
         }
-
-        val model = service.modelFor(sourceLanguage, targetLanguage)
-        if (model == null) {
+        val pair = TranslationCatalog.pairFor(sourceLanguage, targetLanguage)
+        if (pair == null) {
             onResult(TranslationResult.UnsupportedLanguagePair(sourceLanguage, targetLanguage))
             return
         }
-
         if (!service.isSupported) {
             onResult(TranslationResult.Failure("Offline translation is not available on this device."))
             return
         }
-
         viewModelScope.launch {
-            if (!service.isModelDownloaded(model.id)) {
-                refreshModels()
-                onResult(TranslationResult.ModelNotDownloaded(model))
+            if (!service.isPairReady(pair)) {
+                refreshState()
+                onResult(TranslationResult.PairNotReady(pair))
                 return@launch
             }
-
             _uiState.update { it.copy(isTranslating = true, message = null) }
-            val result = service.translate(input, model.id)
+            val result = service.translate(input, pair)
             _uiState.update {
                 it.copy(
                     isTranslating = false,
@@ -173,51 +139,33 @@ class TranslationViewModel(
         }
     }
 
-    private suspend fun refreshModels(message: String? = _uiState.value.message) {
+    private suspend fun refreshState(message: String? = _uiState.value.message) {
         _uiState.update { it.copy(isRefreshing = true, message = message) }
-        val models = service.availableModels().map { model ->
-            TranslationModelState(
-                model = model,
-                isDownloaded = service.isModelDownloaded(model.id),
-                isBusy = _uiState.value.models.firstOrNull { it.model.id == model.id }?.isBusy == true,
-                downloadProgress = _uiState.value.models.firstOrNull { it.model.id == model.id }?.downloadProgress,
-                status = _uiState.value.models.firstOrNull { it.model.id == model.id }?.status
-            )
-        }
+        val downloaded = service.downloadedLanguagePacks()
+        val currentBusy = _uiState.value.languagePacks.filter { it.isBusy }.map { it.language.code }.toSet()
+        val pair = _uiState.value.activePair
         _uiState.update {
             it.copy(
                 isSupported = service.isSupported,
-                models = models,
+                languagePacks = service.availableLanguages().map { language ->
+                    TranslationLanguagePackState(
+                        language = language,
+                        isDownloaded = language.code in downloaded,
+                        isBusy = language.code in currentBusy
+                    )
+                },
+                isPairReady = pair != null && downloaded.containsAll(pair.requiredLanguagePacks),
                 isRefreshing = false,
                 message = message
             )
         }
     }
 
-    private fun setModelDownloadState(
-        modelId: String,
-        isBusy: Boolean,
-        progress: Float?,
-        status: String?
-    ) {
+    private fun setPackBusy(languageCode: String, busy: Boolean) {
         _uiState.update { state ->
-            state.copy(
-                models = state.models.map { modelState ->
-                    if (modelState.model.id == modelId) {
-                        modelState.copy(
-                            isBusy = isBusy,
-                            downloadProgress = progress,
-                            status = status
-                        )
-                    } else {
-                        modelState
-                    }
-                }
-            )
+            state.copy(languagePacks = state.languagePacks.map { pack ->
+                if (pack.language.code == languageCode) pack.copy(isBusy = busy) else pack
+            })
         }
-    }
-
-    private fun setMessage(message: String?) {
-        _uiState.update { it.copy(message = message) }
     }
 }

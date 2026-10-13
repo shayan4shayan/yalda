@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.shdarv.yalda.db.Category
+import com.shdarv.yalda.localization.LocalAppStrings
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
@@ -65,6 +66,7 @@ fun CategoriesPage(
     onUpdateCategory: (Category) -> Unit,
     onDeleteCategory: (Category) -> Unit
 ) {
+    val strings = LocalAppStrings.current
     var showAddDialog by remember { mutableStateOf(false) }
     var editingCategory by remember { mutableStateOf<Category?>(null) }
     var deletingCategory by remember { mutableStateOf<Category?>(null) }
@@ -86,7 +88,7 @@ fun CategoriesPage(
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "Categories",
+                    text = strings("Categories"),
                     fontSize = 30.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -97,8 +99,8 @@ fun CategoriesPage(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search categories") },
-                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = "Search") },
+                    placeholder = { Text(strings("Search categories")) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = strings("Search")) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp)
                 )
@@ -108,7 +110,7 @@ fun CategoriesPage(
 
             if (filteredCategories.isEmpty()) {
                 Text(
-                    text = "No categories yet. Add your first category.",
+                    text = strings("No categories yet. Add your first category."),
                     modifier = Modifier.padding(horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
@@ -153,13 +155,13 @@ fun CategoriesPage(
             ),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
         ) {
-            Icon(Icons.Outlined.Add, contentDescription = "Add category")
+            Icon(Icons.Outlined.Add, contentDescription = strings("Add category"))
         }
     }
 
     if (showAddDialog) {
         CategoryEditDialog(
-            title = "Add Category",
+            title = strings("Add Category"),
             initialValue = "",
             onDismiss = { showAddDialog = false },
             onConfirm = { name ->
@@ -171,7 +173,7 @@ fun CategoriesPage(
 
     editingCategory?.let { category ->
         CategoryEditDialog(
-            title = "Edit Category",
+            title = strings("Edit Category"),
             initialValue = category.name,
             onDismiss = { editingCategory = null },
             onConfirm = { name ->
@@ -184,19 +186,19 @@ fun CategoriesPage(
     deletingCategory?.let { category ->
         AlertDialog(
             onDismissRequest = { deletingCategory = null },
-            title = { Text("Delete Category") },
-            text = { Text("Delete ${category.name} and all its words?") },
+            title = { Text(strings("Delete Category")) },
+            text = { Text(strings("Delete {0} and all its words?", category.name)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         onDeleteCategory(category)
                         deletingCategory = null
                     }
-                ) { Text("Delete") }
+                ) { Text(strings("Delete")) }
             },
             dismissButton = {
                 TextButton(onClick = { deletingCategory = null }) {
-                    Text("Cancel")
+                    Text(strings("Cancel"))
                 }
             }
         )
@@ -205,12 +207,13 @@ fun CategoriesPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CategoryEditDialog(
+internal fun CategoryEditDialog(
     title: String,
     initialValue: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
+    val strings = LocalAppStrings.current
     var name by remember { mutableStateOf(initialValue) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -219,7 +222,7 @@ private fun CategoryEditDialog(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Name") },
+                label = { Text(strings("Name")) },
                 singleLine = true
             )
         },
@@ -228,12 +231,12 @@ private fun CategoryEditDialog(
                 onClick = { onConfirm(name.trim()) },
                 enabled = name.trim().isNotEmpty()
             ) {
-                Text("Save")
+                Text(strings("Save"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(strings("Cancel"))
             }
         })
 }
@@ -244,7 +247,7 @@ data class CategoryStyle(
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 )
 
-private fun categoryStyleFor(id: Long): CategoryStyle {
+internal fun categoryStyleFor(id: Long): CategoryStyle {
     val styles = listOf(
         CategoryStyle(Color(0xFF137FEC), Icons.Outlined.Flight),
         CategoryStyle(Color(0xFFF97316), Icons.Outlined.Restaurant),
@@ -257,7 +260,7 @@ private fun categoryStyleFor(id: Long): CategoryStyle {
 }
 
 @Composable
-private fun CategoryCard(
+internal fun CategoryCard(
     modifier: Modifier = Modifier,
     name: String,
     wordCount: Int,
@@ -269,6 +272,7 @@ private fun CategoryCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -301,7 +305,7 @@ private fun CategoryCard(
                 Text(text = name, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "$wordCount words",
+                    text = strings("{0} words", wordCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
@@ -333,14 +337,14 @@ private fun CategoryCard(
                     IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
                         Icon(
                             Icons.Outlined.Edit,
-                            contentDescription = "Edit category",
+                            contentDescription = strings("Edit Category"),
                             tint = accent
                         )
                     }
                     IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
                         Icon(
                             Icons.Outlined.Delete,
-                            contentDescription = "Delete category",
+                            contentDescription = strings("Delete Category"),
                             tint = accent
                         )
                     }

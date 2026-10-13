@@ -7,7 +7,6 @@ import com.shdarv.yalda.db.Profile
 import com.shdarv.yalda.db.WordEntry
 import com.shdarv.yalda.db.WordEntryDto
 import com.shdarv.yalda.db.database
-import kotlinx.coroutines.flow.last
 
 
 expect class FileExporter {
@@ -45,14 +44,18 @@ class CategoryDataHandler(
 
     // Function to process imported data
     suspend fun saveImportedCategory(profile: Profile, importedData: CategoryWithWordsDto) {
-        // Create or update category
-        var category = appDatabase.categoryDao().getCategoryByName(importedData.categoryName)
+        var category = appDatabase.categoryDao().getCategoryByName(profile.id, importedData.categoryName)
         val categoryId: Long
         if (category == null) {
-            categoryId = appDatabase.categoryDao().insertCategory(Category(name = importedData.categoryName))
+            categoryId = appDatabase.categoryDao().insertCategory(
+                Category(
+                    name = importedData.categoryName,
+                    profileIdFk = profile.id,
+                    isUserModified = true
+                )
+            )
         } else {
             categoryId = category.id
-            // Optionally update existing category details if needed
         }
 
         // Add words, potentially checking for duplicates or deciding on an update strategy
@@ -63,6 +66,7 @@ class CategoryDataHandler(
                 description = it.description,
                 categoryIdFk = categoryId,
                 profileIdFk = profile.id,
+                isUserModified = true
             )
         }
         appDatabase.wordEntryDao().insertAll(wordEntries) // Ensure your DAO has insertAll
@@ -78,8 +82,8 @@ class CategoryDataHandler(
         }
     }
 
-    suspend fun hasCategoryByName(name: String): Boolean =
-        appDatabase.categoryDao().getCategoryByName(name) != null
+    suspend fun hasCategoryByName(profileId: Long, name: String): Boolean =
+        appDatabase.categoryDao().getCategoryByName(profileId, name) != null
 }
 
 object ioDataHandler {

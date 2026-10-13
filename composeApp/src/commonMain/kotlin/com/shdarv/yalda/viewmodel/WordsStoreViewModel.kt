@@ -6,127 +6,152 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.shdarv.yalda.db.CategoryWithWordsDto
+import com.shdarv.yalda.db.AppDatabase
 import com.shdarv.yalda.db.Profile
-import com.shdarv.yalda.db.WordEntryDto
-import com.shdarv.yalda.io.CategoryDataHandler
-import com.shdarv.yalda.io.ioDataHandler
-import com.shdarv.yalda.models.RemoteFile
+import com.shdarv.yalda.models.DatasetPack
+import com.shdarv.yalda.network.DatasetCatalogSource
 import com.shdarv.yalda.network.github
-import kotlinx.coroutines.Dispatchers
+import com.shdarv.yalda.platform.AppSettingsStore
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
-class WordsStoreViewModel: ViewModel() {
+class WordsStoreViewModel(
+    private val appDatabase: AppDatabase,
+    private val settings: AppSettingsStore
+) : ViewModel() {
+    val packs = mutableStateListOf<DatasetPack>()
+    val installedPackIds = mutableStateListOf<String>()
+    private val importingPackKeys = mutableStateListOf<String>()
 
-    val categories = mutableStateListOf<RemoteFile>()
-    val importedCategories = mutableStateListOf<String>()
-    val importingCategories = mutableStateListOf<String>()
+    var isCatalogLoading by mutableStateOf(false)
+        private set
+    var catalogMessage: String? by mutableStateOf(null)
+        private set
     var importMessage: String? by mutableStateOf(null)
-    val importHandler : CategoryDataHandler = ioDataHandler.get()
+        private set
+
+    private var activeProfile: Profile? = null
+    private var selectedPackIds: Set<String> = emptySet()
+
+    val activeProfileId: Long?
+        get() = activeProfile?.id
 
     init {
         loadFromNetwork()
     }
 
-
     fun loadFromNetwork() {
+        if (isCatalogLoading) return
         viewModelScope.launch {
-            categories.clear()
-            categories.addAll(
-                github.getFilesList()
-            )
-        }
-    }
-
-    fun loadAndImportCategory(profile: Profile, file: RemoteFile) {
-        viewModelScope.launch(Dispatchers.Default) {
-            setImporting(file.name, true)
+            isCatalogLoading = true
+            catalogMessage = null
             try {
-                if (isCategoryImportedInternal(file)) {
-                    markCategoryImported(file)
-                    setImportMessage("${file.name} is already imported.")
-                } else {
-                    val words = github.getWordsList(file.address)
-                    if (words.isEmpty()) {
-                        setImportMessage("Import failed for ${file.name}.")
-                    } else {
-                        val category = CategoryWithWordsDto(
-                            file.name,
-                            words = words.map {
-                                WordEntryDto(
-                                    word = it.word,
-                                    definition = it.meaning,
-                                    description = it.description
-                                )
-                            }
-                        )
-                        importHandler.saveImportedCategory(profile, category)
-                        markCategoryImported(file)
-                        setImportMessage("Imported ${file.name}.")
-                    }
+                val cached = settings.getString(CATALOG_CACHE_KEY, "")
+                val loaded = github.getCatalog(cached)
+                packs.clear()
+                packs.addAll(loaded.catalog.packs)
+                if (loaded.source == DatasetCatalogSource.NetworkV2 && loaded.rawV2 != null) {
+                    settings.putString(CATALOG_CACHE_KEY, loaded.rawV2)
                 }
-            } catch (e: Exception) {
-                setImportMessage("Import failed for ${file.name}.")
+                catalogMessage = when (loaded.source) {
+                    DatasetCatalogSource.NetworkV2 -> null
+                    DatasetCatalogSource.CacheV2 -> "Showing the last saved catalog. Refresh failed."
+                    DatasetCatalogSource.LegacyIndex -> "Using the legacy English to Persian catalog."
+                }
+            } catch (exception: Exception) {
+                catalogMessage = exception.message ?: "Catalog refresh failed. Existing data was kept."
             } finally {
-                setImporting(file.name, false)
+                isCatalogLoading = false
             }
         }
     }
 
-    suspend fun refreshImportedCategories(profile: Profile?) {
-        if (profile == null) {
-            withContext(Dispatchers.Main) {
-                importedCategories.clear()
-            }
+    fun setActiveProfile(profile: Profile?, selectedDatasetPackIds: Set<String>) {
+        if (activeProfile?.id != profile?.id) {
+            installedPackIds.clear()
+            importMessage = null
+        }
+        activeProfile = profile
+        selectedPackIds = selectedDatasetPackIds
+        refreshInstalledPacks()
+    }
+
+    fun compatiblePacks(sourceLanguage: String, targetLanguage: String): List<DatasetPack> =
+        packs.filter { it.sourceLanguage == sourceLanguage && it.targetLanguage == targetLanguage }
+
+    fun orderedPacksForActiveProfile(): List<DatasetPack> {
+        val profile = activeProfile ?: return emptyList()
+        return compatiblePacks(profile.sourceLanguage, profile.targetLanguage)
+            .sortedWith(compareByDescending<DatasetPack> { it.id in selectedPackIds }.thenBy { it.title })
+    }
+
+    fun selectedPacksForActiveProfile(): List<DatasetPack> =
+        orderedPacksForActiveProfile().filter { it.id in selectedPackIds }
+
+    fun importSelected() {
+        val profile = activeProfile ?: return
+        val selected = selectedPacksForActiveProfile().filterNot { isPackImporting(it) }
+        if (selected.isEmpty()) {
+            importMessage = "No selected packs are available for this language pair."
             return
         }
-
-        val importedNames = categories.mapNotNull { file ->
-            if (isCategoryImportedInternal(file)) file.name else null
-        }
-        withContext(Dispatchers.Main) {
-            importedCategories.clear()
-            importedCategories.addAll(importedNames)
+        viewModelScope.launch {
+            selected.forEach { pack -> importPack(profile, pack) }
         }
     }
 
-    fun isCategoryImported(file: RemoteFile): Boolean =
-        importedCategories.contains(file.name)
+    fun loadAndImportCategory(profile: Profile, pack: DatasetPack) {
+        viewModelScope.launch { importPack(profile, pack) }
+    }
 
-    fun isCategoryImporting(file: RemoteFile): Boolean =
-        importingCategories.contains(file.name)
+    fun isPackInstalled(pack: DatasetPack): Boolean = pack.id in installedPackIds
+    fun isPackImporting(pack: DatasetPack): Boolean =
+        activeProfile?.let { importKey(it.id, pack.id) in importingPackKeys } == true
 
     fun clearImportMessage() {
         importMessage = null
     }
 
-    private suspend fun markCategoryImported(file: RemoteFile) {
-        withContext(Dispatchers.Main) {
-            if (!importedCategories.contains(file.name)) {
-                importedCategories.add(file.name)
+    private suspend fun importPack(profile: Profile, pack: DatasetPack) {
+        if (pack.sourceLanguage != profile.sourceLanguage || pack.targetLanguage != profile.targetLanguage) {
+            importMessage = "${pack.title} does not match this profile's directed language pair."
+            return
+        }
+        val importKey = importKey(profile.id, pack.id)
+        if (!importingPackKeys.add(importKey)) return
+        try {
+            val packFile = github.getPack(pack)
+            val summary = appDatabase.datasetImportDao().importPack(profile.id, pack, packFile)
+            if (activeProfile?.id == profile.id) {
+                if (pack.id !in installedPackIds) installedPackIds.add(pack.id)
+                importMessage = summary.displayText(pack.title)
+            }
+        } catch (exception: Exception) {
+            if (activeProfile?.id == profile.id) {
+                importMessage = "Import failed for ${pack.title}: ${exception.message ?: "invalid dataset"}"
+            }
+        } finally {
+            importingPackKeys.remove(importKey)
+        }
+    }
+
+    private fun refreshInstalledPacks() {
+        val profileId = activeProfile?.id
+        if (profileId == null) {
+            installedPackIds.clear()
+            return
+        }
+        viewModelScope.launch {
+            val installed = appDatabase.categoryDao().getInstalledDatasetPackIds(profileId)
+            if (activeProfile?.id == profileId) {
+                installedPackIds.clear()
+                installedPackIds.addAll(installed.distinct())
             }
         }
     }
 
-    private suspend fun isCategoryImportedInternal(file: RemoteFile): Boolean =
-        importHandler.hasCategoryByName(file.name)
+    private fun importKey(profileId: Long, packId: String): String = "$profileId:$packId"
 
-    private suspend fun setImporting(address: String, isImporting: Boolean) {
-        withContext(Dispatchers.Main) {
-            if (isImporting) {
-                if (!importingCategories.contains(address)) {
-                    importingCategories.add(address)
-                }
-            } else {
-                importingCategories.remove(address)
-            }
-        }
-    }
-
-    private suspend fun setImportMessage(message: String?) {
-        withContext(Dispatchers.Main) {
-            importMessage = message
-        }
+    private companion object {
+        const val CATALOG_CACHE_KEY = "dataset.catalog.v2.cache"
     }
 }

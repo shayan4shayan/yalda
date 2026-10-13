@@ -27,12 +27,15 @@ class SearchViewModel(
 
     val query: StateFlow<String> = _query.asStateFlow()
 
-    val categories: StateFlow<List<Category>> = _query
-        .flatMapLatest { query ->
+    val categories: StateFlow<List<Category>> = combine(
+        _activeProfileId.filterNotNull(),
+        _query
+    ) { profileId, query -> profileId to query.trim() }
+        .flatMapLatest { (profileId, query) ->
             if (query.isBlank()) {
-                categoryDao.getAllCategories()
+                categoryDao.getCategoriesForProfile(profileId)
             } else {
-                categoryDao.searchCategories(query.trim())
+                categoryDao.searchCategories(profileId, query)
             }
         }
         .distinctUntilChanged()
@@ -54,6 +57,9 @@ class SearchViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun setActiveProfile(profileId: Long?) {
+        if (_activeProfileId.value != profileId) {
+            _query.value = ""
+        }
         _activeProfileId.value = profileId
     }
 

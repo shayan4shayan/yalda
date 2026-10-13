@@ -31,12 +31,7 @@ class CategoriesViewModel(
     val categoriesForProfile: StateFlow<List<Category>> = _activeProfileId
         .filterNotNull() // Only proceed if profileId is not null
         .flatMapLatest { profileId ->
-            // For categories, they are not directly tied to a profile in the Category table.
-            // We assume categories are global, but words are tied to profile+category.
-            // So, we'll just load all categories for now.
-            // If you intend categories to be profile-specific, you'd need a profileIdFk in Category entity.
-            // For now, let's assume we show ALL categories and filter words later.
-            categoryDao.getAllCategories()
+            categoryDao.getCategoriesForProfile(profileId)
         }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -52,41 +47,37 @@ class CategoriesViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
 
-    // If you actually want categories to be filterable or tied to a profile (e.g. show only categories
-    // that HAVE words for the current profile), your Category entity or queries would need adjustments.
-    // For now, this loads all globally defined categories.
-
     fun setActiveProfileId(profileId: Long?) {
         _activeProfileId.value = profileId
     }
 
     fun addCategory(categoryName: String) {
+        val profileId = _activeProfileId.value ?: return
+        val normalizedName = categoryName.trim()
+        if (normalizedName.isEmpty()) return
         viewModelScope.launch {
-            // Check if category already exists to avoid duplicates if your DAO uses IGNORE
-            val existingCategory = categoryDao.getCategoryByName(categoryName)
+            val existingCategory = categoryDao.getCategoryByName(profileId, normalizedName)
             if (existingCategory == null) {
-                val newCategory = Category(name = categoryName)
+                val newCategory = Category(
+                    name = normalizedName,
+                    profileIdFk = profileId,
+                    isUserModified = true
+                )
                 categoryDao.insertCategory(newCategory)
-                // The flow from getAllCategories() will update
-            } else {
-                // Handle case where category already exists (e.g., show a message)
-                println("Category '$categoryName' already exists.")
             }
         }
     }
 
     fun updateCategory(category: Category) {
         viewModelScope.launch {
-            categoryDao.updateCategory(category)
+            categoryDao.updateCategory(category.copy(name = category.name.trim(), isUserModified = true))
             // The flow will update
         }
     }
 
     fun deleteCategory(category: Category) {
         viewModelScope.launch {
-            wordEntryDao.deleteWordsByCategoryId(category.id)
-            categoryDao.deleteCategory(category) // Then delete the category itself
-            // The flow will update
+            categoryDao.deleteCategory(category)
         }
     }
 

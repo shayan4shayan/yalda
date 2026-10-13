@@ -1,0 +1,320 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "ec6f2591a6a276a02f0a6ac787c1f081",
+    "entities": [
+      {
+        "tableName": "profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `sourceLanguage` TEXT NOT NULL, `targetLanguage` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceLanguage",
+            "columnName": "sourceLanguage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetLanguage",
+            "columnName": "targetLanguage",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "categories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `profileIdFk` INTEGER NOT NULL, `datasetPackId` TEXT, `datasetEntryId` TEXT, `installedDatasetVersion` TEXT, `isUserModified` INTEGER NOT NULL, FOREIGN KEY(`profileIdFk`) REFERENCES `profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileIdFk",
+            "columnName": "profileIdFk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "datasetPackId",
+            "columnName": "datasetPackId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "datasetEntryId",
+            "columnName": "datasetEntryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "installedDatasetVersion",
+            "columnName": "installedDatasetVersion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isUserModified",
+            "columnName": "isUserModified",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_categories_profileIdFk",
+            "unique": false,
+            "columnNames": [
+              "profileIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_categories_profileIdFk` ON `${TABLE_NAME}` (`profileIdFk`)"
+          },
+          {
+            "name": "index_categories_profileIdFk_name",
+            "unique": false,
+            "columnNames": [
+              "profileIdFk",
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_categories_profileIdFk_name` ON `${TABLE_NAME}` (`profileIdFk`, `name`)"
+          },
+          {
+            "name": "index_categories_profileIdFk_datasetPackId",
+            "unique": false,
+            "columnNames": [
+              "profileIdFk",
+              "datasetPackId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_categories_profileIdFk_datasetPackId` ON `${TABLE_NAME}` (`profileIdFk`, `datasetPackId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profileIdFk"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "word_entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`wordId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `word` TEXT NOT NULL, `meaning` TEXT NOT NULL, `description` TEXT, `categoryIdFk` INTEGER NOT NULL, `profileIdFk` INTEGER NOT NULL, `datasetPackId` TEXT, `datasetEntryId` TEXT, `installedDatasetVersion` TEXT, `isUserModified` INTEGER NOT NULL, FOREIGN KEY(`categoryIdFk`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`profileIdFk`) REFERENCES `profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "wordId",
+            "columnName": "wordId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "word",
+            "columnName": "word",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meaning",
+            "columnName": "meaning",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "categoryIdFk",
+            "columnName": "categoryIdFk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileIdFk",
+            "columnName": "profileIdFk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "datasetPackId",
+            "columnName": "datasetPackId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "datasetEntryId",
+            "columnName": "datasetEntryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "installedDatasetVersion",
+            "columnName": "installedDatasetVersion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isUserModified",
+            "columnName": "isUserModified",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "wordId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_word_entries_categoryIdFk",
+            "unique": false,
+            "columnNames": [
+              "categoryIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_word_entries_categoryIdFk` ON `${TABLE_NAME}` (`categoryIdFk`)"
+          },
+          {
+            "name": "index_word_entries_profileIdFk",
+            "unique": false,
+            "columnNames": [
+              "profileIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_word_entries_profileIdFk` ON `${TABLE_NAME}` (`profileIdFk`)"
+          },
+          {
+            "name": "index_word_entries_word_profileIdFk",
+            "unique": false,
+            "columnNames": [
+              "word",
+              "profileIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_word_entries_word_profileIdFk` ON `${TABLE_NAME}` (`word`, `profileIdFk`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "categories",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "categoryIdFk"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profileIdFk"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "profile_setup_preferences",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profileIdFk` INTEGER NOT NULL, `selectedDatasetPackIdsJson` TEXT NOT NULL, `prepareOfflineTranslation` INTEGER NOT NULL, PRIMARY KEY(`profileIdFk`), FOREIGN KEY(`profileIdFk`) REFERENCES `profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "profileIdFk",
+            "columnName": "profileIdFk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selectedDatasetPackIdsJson",
+            "columnName": "selectedDatasetPackIdsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prepareOfflineTranslation",
+            "columnName": "prepareOfflineTranslation",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profileIdFk"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_profile_setup_preferences_profileIdFk",
+            "unique": true,
+            "columnNames": [
+              "profileIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_profile_setup_preferences_profileIdFk` ON `${TABLE_NAME}` (`profileIdFk`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profileIdFk"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ec6f2591a6a276a02f0a6ac787c1f081')"
+    ]
+  }
+}

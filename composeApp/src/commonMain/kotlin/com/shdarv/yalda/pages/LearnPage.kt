@@ -68,6 +68,8 @@ import com.shdarv.yalda.platform.NotificationRange
 import com.shdarv.yalda.platform.NotificationSchedule
 import com.shdarv.yalda.platform.NotificationStrategy
 import com.shdarv.yalda.platform.NotificationTime
+import com.shdarv.yalda.localization.AppStrings
+import com.shdarv.yalda.localization.LocalAppStrings
 import com.shdarv.yalda.platform.appSettings
 import com.shdarv.yalda.platform.rememberNotificationScheduler
 import com.shdarv.yalda.ui.YaldaTheme
@@ -75,6 +77,7 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun LearnPage(profileId: Long?) {
+    val strings = LocalAppStrings.current
     val scheduler = rememberNotificationScheduler()
     val settings = appSettings.get()
     var enabled by remember { mutableStateOf(settings.getBoolean(ENABLED_KEY, false)) }
@@ -96,14 +99,14 @@ fun LearnPage(profileId: Long?) {
     val scrollState = rememberScrollState()
     val strategySummary = when (strategy) {
         NotificationStrategy.ExactTimes -> if (times.isEmpty()) {
-            "No reminder times"
+            strings("No reminder times")
         } else {
             times.joinToString(" | ") { it.displayLabel() }
         }
         NotificationStrategy.TimeRanges -> when (ranges.size) {
-            0 -> "No time windows"
-            1 -> ranges.first().displayLabel()
-            else -> "${ranges.size} reminder windows"
+            0 -> strings("No time windows")
+            1 -> ranges.first().displayLabel(strings)
+            else -> strings("{0} reminder windows", ranges.size)
         }
     }
 
@@ -126,8 +129,8 @@ fun LearnPage(profileId: Long?) {
         if (!scheduler.isSupported) {
             NoticeCard(
                 icon = Icons.Outlined.NotificationsOff,
-                title = "Notifications unavailable",
-                message = "This platform does not support learning reminders."
+                title = strings("Notifications unavailable"),
+                message = strings("This platform does not support learning reminders.")
             )
             return@Column
         }
@@ -135,9 +138,9 @@ fun LearnPage(profileId: Long?) {
         if (!hasPermission && scheduler.isSupported) {
             NoticeCard(
                 icon = Icons.Outlined.Notifications,
-                title = "Permission required",
-                message = "Allow reminder permissions so scheduled words can arrive on time.",
-                actionLabel = "Allow",
+                title = strings("Permission required"),
+                message = strings("Allow reminder permissions so scheduled words can arrive on time."),
+                actionLabel = strings("Allow"),
                 onAction = { scheduler.requestPermission() }
             )
         }
@@ -168,8 +171,8 @@ fun LearnPage(profileId: Long?) {
         if (profileId == null) {
             NoticeCard(
                 icon = Icons.Outlined.NotificationsOff,
-                title = "Profile required",
-                message = "Select or create a profile before applying reminders."
+                title = strings("Profile required"),
+                message = strings("Select or create a profile before applying reminders.")
             )
         }
 
@@ -204,6 +207,7 @@ private fun ReminderHeader(
     summary: String,
     onEnabledChange: (Boolean) -> Unit
 ) {
+    val strings = LocalAppStrings.current
     val accent = if (enabled) {
         MaterialTheme.colorScheme.primary
     } else {
@@ -236,13 +240,13 @@ private fun ReminderHeader(
                     .padding(end = 12.dp)
             ) {
                 Text(
-                    text = "Daily learning reminder",
+                    text = strings("Daily learning reminder"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = if (enabled) "Word reminders are active" else "Word reminders are paused",
+                    text = strings(if (enabled) "Word reminders are active" else "Word reminders are paused"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
                 )
@@ -257,11 +261,11 @@ private fun ReminderHeader(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusPill(
-                text = if (enabled) "On" else "Off",
+                text = strings(if (enabled) "On" else "Off"),
                 selected = enabled
             )
             StatusPill(
-                text = strategy.label,
+                text = strings(strategy.label),
                 selected = true
             )
         }
@@ -344,10 +348,11 @@ private fun StrategySelector(
     strategy: NotificationStrategy,
     onStrategyChange: (NotificationStrategy) -> Unit
 ) {
+    val strings = LocalAppStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle(
-            title = "Schedule strategy",
-            subtitle = "Choose when a daily word can be sent"
+            title = strings("Schedule strategy"),
+            subtitle = strings("Choose when a daily word can be sent")
         )
         Row(
             modifier = Modifier
@@ -358,14 +363,14 @@ private fun StrategySelector(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             StrategySegment(
-                label = NotificationStrategy.ExactTimes.label,
+                label = strings(NotificationStrategy.ExactTimes.label),
                 icon = Icons.Outlined.Schedule,
                 selected = strategy == NotificationStrategy.ExactTimes,
                 onClick = { onStrategyChange(NotificationStrategy.ExactTimes) },
                 modifier = Modifier.weight(1f)
             )
             StrategySegment(
-                label = NotificationStrategy.TimeRanges.label,
+                label = strings(NotificationStrategy.TimeRanges.label),
                 icon = Icons.Outlined.Tune,
                 selected = strategy == NotificationStrategy.TimeRanges,
                 onClick = { onStrategyChange(NotificationStrategy.TimeRanges) },
@@ -415,17 +420,18 @@ private fun ExactTimesEditor(
     onTimeChange: (Int, NotificationTime) -> Unit,
     onClearFocus: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         EditorHeader(
-            title = "Reminder times",
-            subtitle = "Specific moments during the day",
-            actionLabel = "Add",
+            title = strings("Reminder times"),
+            subtitle = strings("Specific moments during the day"),
+            actionLabel = strings("Add"),
             onAction = onAddTime
         )
         if (times.isEmpty()) {
             EmptyScheduleState(
-                title = "No reminder times",
-                message = "Add a time to receive a word reminder."
+                title = strings("No reminder times"),
+                message = strings("Add a time to receive a word reminder.")
             )
         } else {
             times.forEachIndexed { index, time ->
@@ -449,17 +455,18 @@ private fun TimeRangesEditor(
     onRangeChange: (Int, NotificationRange) -> Unit,
     onClearFocus: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         EditorHeader(
-            title = "Reminder windows",
-            subtitle = "Repeated reminders inside time ranges",
-            actionLabel = "Add",
+            title = strings("Reminder windows"),
+            subtitle = strings("Repeated reminders inside time ranges"),
+            actionLabel = strings("Add"),
             onAction = onAddRange
         )
         if (ranges.isEmpty()) {
             EmptyScheduleState(
-                title = "No time windows",
-                message = "Add a window to repeat reminders during a part of the day."
+                title = strings("No time windows"),
+                message = strings("Add a window to repeat reminders during a part of the day.")
             )
         } else {
             ranges.forEachIndexed { index, range ->
@@ -483,10 +490,11 @@ private fun TimeCard(
     onTimeChange: (NotificationTime) -> Unit,
     onClearFocus: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     ReminderCard {
         ItemHeader(
             icon = Icons.Outlined.Schedule,
-            title = "Reminder ${index + 1}",
+            title = strings("Reminder {0}", index + 1),
             subtitle = time.displayLabel(),
             onRemove = onRemove
         )
@@ -494,7 +502,7 @@ private fun TimeCard(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             NumberField(
                 value = time.hour,
-                label = "Hour",
+                label = strings("Hour"),
                 range = 0..23,
                 imeAction = ImeAction.Next,
                 onValueChange = { onTimeChange(time.copy(hour = it)) },
@@ -503,7 +511,7 @@ private fun TimeCard(
             )
             NumberField(
                 value = time.minute,
-                label = "Minute",
+                label = strings("Minute"),
                 range = 0..59,
                 imeAction = ImeAction.Done,
                 onValueChange = { onTimeChange(time.copy(minute = it)) },
@@ -522,18 +530,19 @@ private fun RangeCard(
     onRangeChange: (NotificationRange) -> Unit,
     onClearFocus: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     ReminderCard {
         ItemHeader(
             icon = Icons.Outlined.Tune,
-            title = "Window ${index + 1}",
-            subtitle = range.displayLabel(),
+            title = strings("Window {0}", index + 1),
+            subtitle = range.displayLabel(strings),
             onRemove = onRemove
         )
         Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             NumberField(
                 value = range.startHour,
-                label = "Start hour",
+                label = strings("Start hour"),
                 range = 0..23,
                 imeAction = ImeAction.Next,
                 onValueChange = { onRangeChange(range.copy(startHour = it)) },
@@ -542,7 +551,7 @@ private fun RangeCard(
             )
             NumberField(
                 value = range.startMinute,
-                label = "Minute",
+                label = strings("Minute"),
                 range = 0..59,
                 imeAction = ImeAction.Next,
                 onValueChange = { onRangeChange(range.copy(startMinute = it)) },
@@ -554,7 +563,7 @@ private fun RangeCard(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             NumberField(
                 value = range.endHour,
-                label = "End hour",
+                label = strings("End hour"),
                 range = 0..23,
                 imeAction = ImeAction.Next,
                 onValueChange = { onRangeChange(range.copy(endHour = it)) },
@@ -563,7 +572,7 @@ private fun RangeCard(
             )
             NumberField(
                 value = range.endMinute,
-                label = "Minute",
+                label = strings("Minute"),
                 range = 0..59,
                 imeAction = ImeAction.Next,
                 onValueChange = { onRangeChange(range.copy(endMinute = it)) },
@@ -574,7 +583,7 @@ private fun RangeCard(
         Spacer(modifier = Modifier.height(8.dp))
         NumberField(
             value = range.intervalMinutes,
-            label = "Every (min)",
+            label = strings("Every (min)"),
             range = 1..Int.MAX_VALUE,
             imeAction = ImeAction.Done,
             onValueChange = { onRangeChange(range.copy(intervalMinutes = it)) },
@@ -645,6 +654,7 @@ private fun ItemHeader(
     subtitle: String,
     onRemove: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -684,7 +694,7 @@ private fun ItemHeader(
         ) {
             Icon(
                 Icons.Outlined.Delete,
-                contentDescription = "Remove",
+                contentDescription = strings("Remove"),
                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                 modifier = Modifier.size(20.dp)
             )
@@ -702,6 +712,7 @@ private fun NumberField(
     onClearFocus: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     var text by remember(value) { mutableStateOf(value.toString()) }
 
     fun commitValue(nextValue: Int) {
@@ -742,7 +753,7 @@ private fun NumberField(
             ) {
                 Icon(
                     Icons.Outlined.Remove,
-                    contentDescription = "Decrease $label",
+                    contentDescription = strings("Decrease {0}", label),
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -754,7 +765,7 @@ private fun NumberField(
             ) {
                 Icon(
                     Icons.Outlined.Add,
-                    contentDescription = "Increase $label",
+                    contentDescription = strings("Increase {0}", label),
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -817,6 +828,7 @@ private fun ReminderActions(
     onApply: () -> Unit,
     onSendSample: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -830,7 +842,7 @@ private fun ReminderActions(
         ) {
             Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Apply", maxLines = 1)
+            Text(strings("Apply"), maxLines = 1)
         }
         OutlinedButton(
             onClick = onSendSample,
@@ -841,7 +853,7 @@ private fun ReminderActions(
         ) {
             Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Sample", maxLines = 1)
+            Text(strings("Sample"), maxLines = 1)
         }
     }
 }
@@ -904,8 +916,13 @@ private val NotificationStrategy.label: String
 
 private fun NotificationTime.displayLabel(): String = formatTime(hour, minute)
 
-private fun NotificationRange.displayLabel(): String {
-    return "${formatTime(startHour, startMinute)}-${formatTime(endHour, endMinute)}, every $intervalMinutes min"
+private fun NotificationRange.displayLabel(strings: AppStrings): String {
+    return strings(
+        "{0}–{1}, every {2} min",
+        formatTime(startHour, startMinute),
+        formatTime(endHour, endMinute),
+        intervalMinutes
+    )
 }
 
 private fun formatTime(hour: Int, minute: Int): String {

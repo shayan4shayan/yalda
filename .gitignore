@@ -2,7 +2,8 @@
 .kotlin
 .gradle
 .idea
-docs
+docs/*
+!docs/PUBLIC_DATASET_MAINTENANCE.md
 gradle
 **/build/
 xcuserdata

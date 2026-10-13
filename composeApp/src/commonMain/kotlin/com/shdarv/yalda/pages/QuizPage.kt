@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shdarv.yalda.db.Category
 import com.shdarv.yalda.db.WordEntry
+import com.shdarv.yalda.localization.LocalAppStrings
 import com.shdarv.yalda.platform.rememberSpeechEngine
 import com.shdarv.yalda.platform.rememberTtsEngine
 import com.shdarv.yalda.viewmodel.WordsViewModel
@@ -83,19 +84,29 @@ fun QuizPage(
     categories: List<Category>,
     wordsViewModel: WordsViewModel
 ) {
+    val strings = LocalAppStrings.current
     var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
     var selectedQuizType by remember { mutableStateOf(QuizType.MultipleChoice) }
     var categoryMenuOpen by remember { mutableStateOf(false) }
     var wordPool by remember { mutableStateOf<List<WordEntry>>(emptyList()) }
 
-    val selectedCategory = categories.firstOrNull { it.id == selectedCategoryId }
-    val categoryLabel = selectedCategory?.name ?: "All categories"
+    val profileCategories = categories.filter { it.profileIdFk == profileId }
+    val scopedCategoryId = selectedCategoryId?.takeIf { categoryId ->
+        profileCategories.any { it.id == categoryId }
+    }
+    val selectedCategory = profileCategories.firstOrNull { it.id == scopedCategoryId }
+    val categoryLabel = selectedCategory?.name ?: strings("All categories")
 
-    LaunchedEffect(profileId, selectedCategoryId) {
+    LaunchedEffect(profileId) {
+        selectedCategoryId = null
+        categoryMenuOpen = false
+    }
+
+    LaunchedEffect(profileId, scopedCategoryId) {
         wordPool = if (profileId == null) {
             emptyList()
         } else {
-            wordsViewModel.getWordsForQuiz(profileId, selectedCategoryId)
+            wordsViewModel.getWordsForQuiz(profileId, scopedCategoryId)
         }
     }
 
@@ -115,13 +126,13 @@ fun QuizPage(
                     .padding(end = 12.dp)
             ) {
                 Text(
-                    text = "Quiz",
+                    text = strings("Quiz"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = "${selectedQuizType.label} · $categoryLabel · ${wordPool.size} words",
+                    text = "${strings(selectedQuizType.label)} · $categoryLabel · ${strings("{0} words", wordPool.size)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     maxLines = 1,
@@ -137,7 +148,7 @@ fun QuizPage(
                 ) {
                     Icon(
                         Icons.Outlined.Category,
-                        contentDescription = "Category",
+                        contentDescription = strings("Category"),
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -153,13 +164,13 @@ fun QuizPage(
                     onDismissRequest = { categoryMenuOpen = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("All categories") },
+                        text = { Text(strings("All categories")) },
                         onClick = {
                             selectedCategoryId = null
                             categoryMenuOpen = false
                         }
                     )
-                    categories.forEach { category ->
+                    profileCategories.forEach { category ->
                         DropdownMenuItem(
                             text = { Text(category.name) },
                             onClick = {
@@ -183,8 +194,8 @@ fun QuizPage(
 
         if (profileId == null) {
             QuizNotice(
-                title = "Select a profile",
-                message = "Choose or create a profile before starting a quiz."
+                title = strings("Select a profile"),
+                message = strings("Choose or create a profile before starting a quiz.")
             )
             return@Column
         }
@@ -242,6 +253,7 @@ private fun QuizTypeSelector(
 
 @Composable
 private fun QuizTypeLabel(type: QuizType) {
+    val strings = LocalAppStrings.current
     Icon(
         type.icon,
         contentDescription = null,
@@ -249,7 +261,7 @@ private fun QuizTypeLabel(type: QuizType) {
     )
     Spacer(modifier = Modifier.width(5.dp))
     Text(
-        text = type.label,
+        text = strings(type.label),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         fontSize = 12.sp
@@ -265,6 +277,7 @@ private val QuizType.icon: ImageVector
 
 @Composable
 private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
+    val strings = LocalAppStrings.current
     var question by remember { mutableStateOf<MultipleChoiceQuestion?>(null) }
     var feedback by remember { mutableStateOf("") }
     var selectedOption by remember { mutableStateOf<String?>(null) }
@@ -288,8 +301,8 @@ private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
 
     if (wordPool.size < 4) {
         QuizNotice(
-            title = "More words needed",
-            message = "Add at least 4 words in this category to start multiple choice."
+            title = strings("More words needed"),
+            message = strings("Add at least 4 words in this category to start multiple choice.")
         )
         return
     }
@@ -297,9 +310,9 @@ private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
     question?.let { q ->
         QuizCard {
             QuizPrompt(
-                label = "Multiple choice",
+                label = strings("Multiple choice"),
                 title = q.word.word,
-                message = "Choose the matching meaning."
+                message = strings("Choose the matching meaning.")
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -312,9 +325,9 @@ private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
                     onClick = {
                         selectedOption = option
                         feedback = if (option == q.correct) {
-                            "Correct."
+                            strings("Correct.")
                         } else {
-                            "Not quite. Try another answer."
+                            strings("Not quite. Try another answer.")
                         }
                     }
                 )
@@ -334,11 +347,11 @@ private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
                 horizontalArrangement = Arrangement.End
             ) {
                 Button(onClick = { nextQuestion() }) {
-                    Text("Next")
+                    Text(strings("Next"))
                     Spacer(modifier = Modifier.width(6.dp))
                     Icon(
                         Icons.AutoMirrored.Outlined.NavigateNext,
-                        contentDescription = "Next",
+                        contentDescription = strings("Next"),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -349,6 +362,7 @@ private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
 
 @Composable
 private fun SpellingQuiz(wordPool: List<WordEntry>) {
+    val strings = LocalAppStrings.current
     val ttsEngine = rememberTtsEngine()
     var currentWord by remember { mutableStateOf<WordEntry?>(null) }
     var input by remember { mutableStateOf("") }
@@ -368,8 +382,8 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
 
     if (wordPool.isEmpty()) {
         QuizNotice(
-            title = "No words yet",
-            message = "Add words to this category before starting spelling practice."
+            title = strings("No words yet"),
+            message = strings("Add words to this category before starting spelling practice.")
         )
         return
     }
@@ -387,21 +401,21 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
                         .padding(end = 12.dp)
                 ) {
                     Text(
-                        text = "Spelling",
+                        text = strings("Spelling"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Listen and type",
+                        text = strings("Listen and type"),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Meaning: ${word.meaning}",
+                        text = strings("Meaning: {0}", word.meaning),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
                     )
@@ -413,11 +427,11 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
                 ) {
                     Icon(
                         Icons.Outlined.PlayArrow,
-                        contentDescription = "Play word",
+                        contentDescription = strings("Play word"),
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(5.dp))
-                    Text("Play", maxLines = 1)
+                    Text(strings("Play"), maxLines = 1)
                 }
             }
 
@@ -426,7 +440,7 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                label = { Text("Type the word") },
+                label = { Text(strings("Type the word")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -447,20 +461,20 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
                 Button(
                     onClick = {
                         feedback = if (input.trim().equals(word.word, ignoreCase = true)) {
-                            "Correct."
+                            strings("Correct.")
                         } else {
-                            "Not quite. It was ${word.word}."
+                            strings("Not quite. It was {0}.", word.word)
                         }
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Check")
+                    Text(strings("Check"))
                 }
                 TextButton(onClick = { nextWord() }) {
-                    Text("Next")
+                    Text(strings("Next"))
                     Icon(
                         Icons.AutoMirrored.Outlined.NavigateNext,
-                        contentDescription = "Next",
+                        contentDescription = strings("Next"),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -479,6 +493,7 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
 
 @Composable
 private fun SpeakingQuiz(wordPool: List<WordEntry>) {
+    val strings = LocalAppStrings.current
     val speechEngine = rememberSpeechEngine()
     val ttsEngine = rememberTtsEngine()
     var currentWord by remember { mutableStateOf<WordEntry?>(null) }
@@ -502,16 +517,16 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
 
     if (wordPool.isEmpty()) {
         QuizNotice(
-            title = "No words yet",
-            message = "Add words to this category before starting speaking practice."
+            title = strings("No words yet"),
+            message = strings("Add words to this category before starting speaking practice.")
         )
         return
     }
 
     if (!speechEngine.isSupported) {
         QuizNotice(
-            title = "Speaking unavailable",
-            message = "Speech recognition is not supported on this device."
+            title = strings("Speaking unavailable"),
+            message = strings("Speech recognition is not supported on this device.")
         )
         return
     }
@@ -519,9 +534,9 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
     currentWord?.let { word ->
         QuizCard {
             QuizPrompt(
-                label = "Speaking",
-                title = "Say what you hear",
-                message = "Listen first, then record your pronunciation."
+                label = strings("Speaking"),
+                title = strings("Say what you hear"),
+                message = strings("Listen first, then record your pronunciation.")
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -538,11 +553,11 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
                 ) {
                     Icon(
                         Icons.Outlined.PlayArrow,
-                        contentDescription = "Play word",
+                        contentDescription = strings("Play word"),
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Play", maxLines = 1)
+                    Text(strings("Play"), maxLines = 1)
                 }
                 Button(
                     onClick = {
@@ -553,14 +568,14 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
                                 isListening = false
                                 heard = it
                                 feedback = if (it.trim().equals(word.word, ignoreCase = true)) {
-                                    "Great pronunciation."
+                                    strings("Great pronunciation.")
                                 } else {
-                                    "Heard \"$it\". Try again."
+                                    strings("Heard “{0}”. Try again.", it)
                                 }
                             },
                             onError = { error ->
                                 isListening = false
-                                feedback = error
+                                feedback = strings(error)
                             },
                             onListeningChanged = { listening ->
                                 isListening = listening
@@ -573,12 +588,12 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
                 ) {
                     Icon(
                         Icons.Outlined.Mic,
-                        contentDescription = "Start speaking",
+                        contentDescription = strings("Start speaking"),
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isListening) "Listening..." else "Speak",
+                        text = strings(if (isListening) "Listening..." else "Speak"),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -605,10 +620,10 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
                 horizontalArrangement = Arrangement.End
             ) {
                 TextButton(onClick = { nextWord() }) {
-                    Text("Next")
+                    Text(strings("Next"))
                     Icon(
                         Icons.AutoMirrored.Outlined.NavigateNext,
-                        contentDescription = "Next",
+                        contentDescription = strings("Next"),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -733,6 +748,7 @@ private fun FeedbackMessage(
 
 @Composable
 private fun HeardText(heard: String) {
+    val strings = LocalAppStrings.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -740,7 +756,7 @@ private fun HeardText(heard: String) {
             .padding(12.dp)
     ) {
         Text(
-            text = "Heard",
+            text = strings("Heard"),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
         )

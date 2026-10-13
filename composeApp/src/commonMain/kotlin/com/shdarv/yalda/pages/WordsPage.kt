@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shdarv.yalda.db.Category
 import com.shdarv.yalda.db.WordEntry
+import com.shdarv.yalda.localization.LocalAppStrings
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
@@ -46,7 +46,6 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.foundation.shape.RoundedCornerShape
-import com.shdarv.yalda.translation.TranslationModelInfo
 import com.shdarv.yalda.translation.TranslationResult
 import com.shdarv.yalda.translation.TranslationViewModel
 
@@ -63,6 +62,7 @@ fun WordsPage(
     onUpdateWord: (WordEntry) -> Unit,
     onDeleteWord: (WordEntry) -> Unit
 ) {
+    val strings = LocalAppStrings.current
     var showAddDialog by remember { mutableStateOf(false) }
     var editingWord by remember { mutableStateOf<WordEntry?>(null) }
     var deletingWord by remember { mutableStateOf<WordEntry?>(null) }
@@ -77,7 +77,7 @@ fun WordsPage(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = selectedCategory?.name ?: "All Words",
+                text = selectedCategory?.name ?: strings("All Words"),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier
                     .weight(1f)
@@ -88,14 +88,14 @@ fun WordsPage(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box {
                     IconButton(onClick = { categoryMenuOpen = true }) {
-                        Icon(Icons.Outlined.FilterList, contentDescription = "Filter category")
+                        Icon(Icons.Outlined.FilterList, contentDescription = strings("Filter category"))
                     }
                     DropdownMenu(
                         expanded = categoryMenuOpen,
                         onDismissRequest = { categoryMenuOpen = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("All categories") },
+                            text = { Text(strings("All categories")) },
                             onClick = {
                                 onSelectCategory(null)
                                 categoryMenuOpen = false
@@ -117,7 +117,7 @@ fun WordsPage(
                     onClick = { showAddDialog = true },
                     enabled = categories.isNotEmpty()
                 ) {
-                    Icon(Icons.Outlined.Add, contentDescription = "Add word")
+                    Icon(Icons.Outlined.Add, contentDescription = strings("Add word"))
                 }
             }
         }
@@ -125,7 +125,7 @@ fun WordsPage(
         Spacer(modifier = Modifier.height(8.dp))
 
         if (words.isEmpty()) {
-            Text("No words yet. Add your first word.")
+            Text(strings("No words yet. Add your first word."))
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(words, key = { it.wordId }) { word ->
@@ -144,7 +144,7 @@ fun WordsPage(
                                 if (categoryName != null) {
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = "Category: $categoryName",
+                                        text = strings("Category: {0}", categoryName),
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
@@ -162,10 +162,10 @@ fun WordsPage(
                                 horizontalArrangement = Arrangement.End
                             ) {
                                 IconButton(onClick = { editingWord = word }) {
-                                    Icon(Icons.Outlined.Edit, contentDescription = "Edit word")
+                                    Icon(Icons.Outlined.Edit, contentDescription = strings("Edit Word"))
                                 }
                                 IconButton(onClick = { deletingWord = word }) {
-                                    Icon(Icons.Outlined.Delete, contentDescription = "Delete word")
+                                    Icon(Icons.Outlined.Delete, contentDescription = strings("Delete Word"))
                                 }
                             }
                         }
@@ -177,7 +177,7 @@ fun WordsPage(
 
     if (showAddDialog) {
         WordEditDialog(
-            title = "Add Word",
+            title = strings("Add Word"),
             categories = categories,
             initialWord = "",
             initialMeaning = "",
@@ -196,7 +196,7 @@ fun WordsPage(
 
     editingWord?.let { word ->
         WordEditDialog(
-            title = "Edit Word",
+            title = strings("Edit Word"),
             categories = categories,
             initialWord = word.word,
             initialMeaning = word.meaning,
@@ -222,19 +222,19 @@ fun WordsPage(
     deletingWord?.let { word ->
         AlertDialog(
             onDismissRequest = { deletingWord = null },
-            title = { Text("Delete Word") },
-            text = { Text("Delete ${word.word}?") },
+            title = { Text(strings("Delete Word")) },
+            text = { Text(strings("Delete {0}?", word.word)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         onDeleteWord(word)
                         deletingWord = null
                     }
-                ) { Text("Delete") }
+                ) { Text(strings("Delete")) }
             },
             dismissButton = {
                 TextButton(onClick = { deletingWord = null }) {
-                    Text("Cancel")
+                    Text(strings("Cancel"))
                 }
             }
         )
@@ -243,7 +243,7 @@ fun WordsPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WordEditDialog(
+internal fun WordEditDialog(
     title: String,
     categories: List<Category>,
     initialWord: String,
@@ -256,21 +256,17 @@ private fun WordEditDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, String, String?, Long) -> Unit
 ) {
+    val strings = LocalAppStrings.current
     var word by remember { mutableStateOf(initialWord) }
     var meaning by remember { mutableStateOf(initialMeaning) }
     var description by remember { mutableStateOf(initialDescription) }
     var categoryId by remember { mutableStateOf(initialCategoryId ?: categories.firstOrNull()?.id) }
     var categoryMenuOpen by remember { mutableStateOf(false) }
-    var downloadPromptModel by remember { mutableStateOf<TranslationModelInfo?>(null) }
     var translationMessage by remember { mutableStateOf<String?>(null) }
+    var showTranslationAttribution by remember { mutableStateOf(false) }
     val selectedCategory = categories.firstOrNull { it.id == categoryId }
     val translationState by translationViewModel.uiState.collectAsState()
-    val modelState = translationState.models.firstOrNull { modelState ->
-        sourceLanguage != null &&
-            targetLanguage != null &&
-            modelState.model.supports(sourceLanguage, targetLanguage)
-    }
-    val isTranslationBusy = translationState.isTranslating || modelState?.isBusy == true
+    val isTranslationBusy = translationState.isTranslating || translationState.isDownloadingPair
     val canTranslate = word.trim().isNotEmpty() && !isTranslationBusy
 
     fun handleTranslationResult(result: TranslationResult) {
@@ -278,16 +274,16 @@ private fun WordEditDialog(
             is TranslationResult.Success -> {
                 meaning = result.text
                 translationMessage = null
+                showTranslationAttribution = true
             }
-            is TranslationResult.ModelNotDownloaded -> {
-                downloadPromptModel = result.model
-                translationMessage = null
+            is TranslationResult.PairNotReady -> {
+                translationMessage = strings("Download this profile's offline translation setup in Settings.")
             }
             is TranslationResult.UnsupportedLanguagePair -> {
-                translationMessage = "AI translation is only available for English to Persian."
+                translationMessage = strings("Offline translation is unavailable for this language pair.")
             }
             is TranslationResult.Failure -> {
-                translationMessage = result.message
+                translationMessage = strings.runtime(result.message)
             }
         }
     }
@@ -296,7 +292,7 @@ private fun WordEditDialog(
         val source = sourceLanguage
         val target = targetLanguage
         if (source == null || target == null) {
-            translationMessage = "Select a profile before using translation."
+            translationMessage = strings("Select a profile before using translation.")
             return
         }
         translationViewModel.translate(
@@ -315,7 +311,7 @@ private fun WordEditDialog(
                 OutlinedTextField(
                     value = word,
                     onValueChange = { word = it },
-                    label = { Text("Word") },
+                    label = { Text(strings("Word")) },
                     singleLine = true
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -323,7 +319,7 @@ private fun WordEditDialog(
                     OutlinedTextField(
                         value = meaning,
                         onValueChange = { meaning = it },
-                        label = { Text("Meaning") },
+                        label = { Text(strings("Meaning")) },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -335,7 +331,7 @@ private fun WordEditDialog(
                         if (isTranslationBusy) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Outlined.Translate, contentDescription = "Translate word")
+                            Icon(Icons.Outlined.Translate, contentDescription = strings("Translate word"))
                         }
                     }
                 }
@@ -347,33 +343,48 @@ private fun WordEditDialog(
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
+                if (showTranslationAttribution) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = strings("Powered by Google Translate"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Description (optional)") }
+                    label = { Text(strings("Description (optional)")) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = { categoryMenuOpen = true },
-                    enabled = categories.isNotEmpty()
-                ) {
-                    Icon(Icons.Outlined.FilterList, contentDescription = "Select category")
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(selectedCategory?.name ?: "Category")
-                }
-                DropdownMenu(
-                    expanded = categoryMenuOpen,
-                    onDismissRequest = { categoryMenuOpen = false }
-                ) {
-                    categories.forEach { category ->
-                        DropdownMenuItem(
-                            text = { Text(category.name) },
-                            onClick = {
-                                categoryId = category.id
-                                categoryMenuOpen = false
-                            }
-                        )
+                if (categories.size == 1) {
+                    Text(
+                        strings("Category: {0}", categories.single().name),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    OutlinedButton(
+                        onClick = { categoryMenuOpen = true },
+                        enabled = categories.isNotEmpty()
+                    ) {
+                        Icon(Icons.Outlined.FilterList, contentDescription = strings("Select category"))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(selectedCategory?.name ?: strings("Category"))
+                    }
+                    DropdownMenu(
+                        expanded = categoryMenuOpen,
+                        onDismissRequest = { categoryMenuOpen = false }
+                    ) {
+                        categories.forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category.name) },
+                                onClick = {
+                                    categoryId = category.id
+                                    categoryMenuOpen = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -393,88 +404,14 @@ private fun WordEditDialog(
                 },
                 enabled = word.trim().isNotEmpty() && meaning.trim().isNotEmpty() && categoryId != null
             ) {
-                Text("Save")
+                Text(strings("Save"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(strings("Cancel"))
             }
         }
     )
 
-    downloadPromptModel?.let { model ->
-        val promptModelState = translationState.models.firstOrNull { it.model.id == model.id }
-        val isDownloading = promptModelState?.isBusy == true
-        AlertDialog(
-            onDismissRequest = {
-                if (!isDownloading) {
-                    downloadPromptModel = null
-                }
-            },
-            title = { Text("Download translation model") },
-            text = {
-                Column {
-                    Text("${model.name} must be downloaded before offline translation can run.")
-                    if (isDownloading) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        val progress = promptModelState?.downloadProgress
-                        if (progress == null) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        } else {
-                            LinearProgressIndicator(
-                                progress = { progress.coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = promptModelState?.status ?: "Downloading model...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-                        )
-                    } else {
-                        translationState.message?.let { message ->
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (message.contains("failed", ignoreCase = true)) {
-                                    MaterialTheme.colorScheme.error
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-                                }
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (isDownloading) {
-                            translationViewModel.cancelModelDownload(model.id)
-                        } else {
-                            translationViewModel.downloadModel(model.id) { success ->
-                                if (success) {
-                                    downloadPromptModel = null
-                                    requestTranslation()
-                                }
-                            }
-                        }
-                    }
-                ) {
-                    Text(if (isDownloading) "Cancel" else "Download")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { downloadPromptModel = null },
-                    enabled = !isDownloading
-                ) {
-                    Text("Close")
-                }
-            }
-        )
-    }
 }

@@ -20,12 +20,29 @@ data class Profile(
 
 @Entity(
     tableName = "categories",
-    indices = [Index(value = ["name"], unique = false)]
+    foreignKeys = [
+        ForeignKey(
+            entity = Profile::class,
+            parentColumns = ["id"],
+            childColumns = ["profileIdFk"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["profileIdFk"]),
+        Index(value = ["profileIdFk", "name"], unique = false),
+        Index(value = ["profileIdFk", "datasetPackId"], unique = false)
+    ]
 )
 data class Category(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    val name: String
+    val name: String,
+    val profileIdFk: Long,
+    val datasetPackId: String? = null,
+    val datasetEntryId: String? = null,
+    val installedDatasetVersion: String? = null,
+    val isUserModified: Boolean = false
 )
 
 @Entity(
@@ -57,7 +74,30 @@ data class WordEntry(
     val meaning: String,
     val description: String?,
     val categoryIdFk: Long,
-    val profileIdFk: Long
+    val profileIdFk: Long,
+    val datasetPackId: String? = null,
+    val datasetEntryId: String? = null,
+    val installedDatasetVersion: String? = null,
+    val isUserModified: Boolean = false
+)
+
+@Entity(
+    tableName = "profile_setup_preferences",
+    foreignKeys = [
+        ForeignKey(
+            entity = Profile::class,
+            parentColumns = ["id"],
+            childColumns = ["profileIdFk"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["profileIdFk"], unique = true)]
+)
+data class ProfileSetupPreference(
+    @PrimaryKey
+    val profileIdFk: Long,
+    val selectedDatasetPackIdsJson: String = "[]",
+    val prepareOfflineTranslation: Boolean = true
 )
 
 data class WordWithCategory(

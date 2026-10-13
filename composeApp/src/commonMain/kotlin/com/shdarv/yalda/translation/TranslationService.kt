@@ -1,39 +1,40 @@
 package com.shdarv.yalda.translation
 
-import kotlinx.serialization.Serializable
+data class TranslationLanguage(
+    val code: String,
+    val name: String
+)
 
-@Serializable
-data class TranslationModelInfo(
-    val id: String,
-    val name: String,
-    val sizeMb: Int,
-    val runtime: String,
+data class TranslationPair(
     val sourceLanguage: String,
-    val targetLanguage: String,
-    val downloadUrl: String? = null,
-    val artifactFileName: String? = null
+    val targetLanguage: String
 ) {
-    fun supports(sourceLanguage: String, targetLanguage: String): Boolean =
-        this.sourceLanguage.equals(sourceLanguage, ignoreCase = true) &&
-            this.targetLanguage.equals(targetLanguage, ignoreCase = true)
+    init {
+        require(sourceLanguage != targetLanguage) { "Translation languages must differ." }
+    }
+
+    val id: String = "mlkit_${sourceLanguage}_$targetLanguage"
+    val requiredLanguagePacks: Set<String> = linkedSetOf(sourceLanguage, targetLanguage)
+    val estimatedSizeMb: Int = requiredLanguagePacks.size * TranslationCatalog.ESTIMATED_PACK_SIZE_MB
+    val displayName: String
+        get() = "${TranslationCatalog.languageName(sourceLanguage)} to ${TranslationCatalog.languageName(targetLanguage)}"
 }
 
-data class TranslationModelState(
-    val model: TranslationModelInfo,
+data class TranslationLanguagePackState(
+    val language: TranslationLanguage,
     val isDownloaded: Boolean = false,
     val isBusy: Boolean = false,
-    val downloadProgress: Float? = null,
     val status: String? = null
 )
 
 data class TranslationDownloadProgress(
     val progress: Float? = null,
-    val message: String = "Downloading..."
+    val message: String = "Downloading language packs..."
 )
 
 sealed interface TranslationResult {
     data class Success(val text: String) : TranslationResult
-    data class ModelNotDownloaded(val model: TranslationModelInfo) : TranslationResult
+    data class PairNotReady(val pair: TranslationPair) : TranslationResult
     data class UnsupportedLanguagePair(
         val sourceLanguage: String,
         val targetLanguage: String
@@ -42,7 +43,7 @@ sealed interface TranslationResult {
 }
 
 sealed interface TranslationDownloadResult {
-    data class Success(val model: TranslationModelInfo) : TranslationDownloadResult
+    data class Success(val message: String) : TranslationDownloadResult
     data object Canceled : TranslationDownloadResult
     data class Failure(val message: String) : TranslationDownloadResult
 }
@@ -50,36 +51,57 @@ sealed interface TranslationDownloadResult {
 interface LocalTranslationService {
     val isSupported: Boolean
 
-    fun availableModels(): List<TranslationModelInfo>
+    fun availableLanguages(): List<TranslationLanguage> = TranslationCatalog.languages
 
-    suspend fun isModelDownloaded(modelId: String): Boolean
+    suspend fun downloadedLanguagePacks(): Set<String>
 
-    suspend fun downloadModel(
-        modelId: String,
+    suspend fun isPairReady(pair: TranslationPair): Boolean =
+        translationPairIsReady(pair, downloadedLanguagePacks())
+
+    suspend fun downloadPair(
+        pair: TranslationPair,
+        wifiOnly: Boolean = true,
         onProgress: (TranslationDownloadProgress) -> Unit = {}
     ): TranslationDownloadResult
 
-    fun cancelModelDownload(modelId: String) = Unit
+    fun cancelPairDownload(pair: TranslationPair) = Unit
 
-    suspend fun deleteModel(modelId: String): TranslationDownloadResult
+    suspend fun deleteLanguagePack(languageCode: String): TranslationDownloadResult
 
-    suspend fun translate(text: String, modelId: String): TranslationResult
-
-    fun modelFor(sourceLanguage: String, targetLanguage: String): TranslationModelInfo? =
-        availableModels().firstOrNull { it.supports(sourceLanguage, targetLanguage) }
+    suspend fun translate(text: String, pair: TranslationPair): TranslationResult
 }
 
-object TranslationCatalog {
-    const val EN_FA_MODEL_ID = "mlkit_en_fa"
+fun translationPairIsReady(pair: TranslationPair, downloadedLanguagePacks: Set<String>): Boolean =
+    downloadedLanguagePacks.containsAll(pair.requiredLanguagePacks)
 
-    val defaultEnFaModel = TranslationModelInfo(
-        id = EN_FA_MODEL_ID,
-        name = "ML Kit English to Persian",
-        sizeMb = 30,
-        runtime = "mlkit",
-        sourceLanguage = "en",
-        targetLanguage = "fa"
+object TranslationCatalog {
+    const val ESTIMATED_PACK_SIZE_MB = 30
+
+    val languages = listOf(
+        TranslationLanguage("en", "English"),
+        TranslationLanguage("es", "Spanish"),
+        TranslationLanguage("fr", "French"),
+        TranslationLanguage("de", "German"),
+        TranslationLanguage("ja", "Japanese"),
+        TranslationLanguage("fa", "Persian"),
+        TranslationLanguage("it", "Italian"),
+        TranslationLanguage("pt", "Portuguese")
     )
+
+    val directedPairs: List<TranslationPair> = languages.flatMap { source ->
+        languages.filter { it.code != source.code }.map { target ->
+            TranslationPair(source.code, target.code)
+        }
+    }
+
+    fun pairFor(sourceLanguage: String, targetLanguage: String): TranslationPair? =
+        directedPairs.firstOrNull {
+            it.sourceLanguage.equals(sourceLanguage, ignoreCase = true) &&
+                it.targetLanguage.equals(targetLanguage, ignoreCase = true)
+        }
+
+    fun languageName(code: String): String =
+        languages.firstOrNull { it.code == code }?.name ?: code.uppercase()
 }
 
 object localTranslations {
@@ -94,21 +116,16 @@ object localTranslations {
 
 private class UnsupportedTranslationService : LocalTranslationService {
     override val isSupported: Boolean = false
-
-    override fun availableModels(): List<TranslationModelInfo> =
-        listOf(TranslationCatalog.defaultEnFaModel)
-
-    override suspend fun isModelDownloaded(modelId: String): Boolean = false
-
-    override suspend fun downloadModel(
-        modelId: String,
+    override suspend fun downloadedLanguagePacks(): Set<String> = emptySet()
+    override suspend fun downloadPair(
+        pair: TranslationPair,
+        wifiOnly: Boolean,
         onProgress: (TranslationDownloadProgress) -> Unit
-    ): TranslationDownloadResult =
+    ): TranslationDownloadResult = TranslationDownloadResult.Failure(
+        "Offline translation is not available on this platform."
+    )
+    override suspend fun deleteLanguagePack(languageCode: String): TranslationDownloadResult =
         TranslationDownloadResult.Failure("Offline translation is not available on this platform.")
-
-    override suspend fun deleteModel(modelId: String): TranslationDownloadResult =
-        TranslationDownloadResult.Failure("Offline translation is not available on this platform.")
-
-    override suspend fun translate(text: String, modelId: String): TranslationResult =
+    override suspend fun translate(text: String, pair: TranslationPair): TranslationResult =
         TranslationResult.Failure("Offline translation is not available on this platform.")
 }

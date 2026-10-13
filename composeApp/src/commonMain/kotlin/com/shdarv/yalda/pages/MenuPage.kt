@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.shdarv.yalda.db.Profile
+import com.shdarv.yalda.localization.LocalAppStrings
 import com.shdarv.yalda.translation.TranslationViewModel
 import com.shdarv.yalda.viewmodel.WordsStoreViewModel
 
@@ -46,23 +47,31 @@ enum class MenuSection {
 fun MenuPage(
     destination: MenuSection,
     profile: Profile?,
+    profiles: List<Profile>,
+    setupPreference: com.shdarv.yalda.db.ProfileSetupPreference?,
     storeViewModel: WordsStoreViewModel,
     translationViewModel: TranslationViewModel,
     onOpenDestination: (MenuSection) -> Unit,
     onBackToMenu: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     when (destination) {
         MenuSection.Home -> MenuHome(onOpenDestination = onOpenDestination)
-        MenuSection.Learn -> MenuSubPage(title = "Learn", onBack = onBackToMenu) {
+        MenuSection.Learn -> MenuSubPage(title = strings("Learn"), onBack = onBackToMenu) {
             LearnPage(profileId = profile?.id)
         }
-        MenuSection.Import -> MenuSubPage(title = "Import", onBack = onBackToMenu) {
+        MenuSection.Import -> MenuSubPage(title = strings("Import"), onBack = onBackToMenu) {
             ImportPage(profile = profile, storeViewModel = storeViewModel)
         }
-        MenuSection.Settings -> MenuSubPage(title = "Settings", onBack = onBackToMenu) {
-            SettingsPage(translationViewModel = translationViewModel)
+        MenuSection.Settings -> MenuSubPage(title = strings("Settings"), onBack = onBackToMenu) {
+            SettingsPage(
+                profile = profile,
+                profiles = profiles,
+                setupPreference = setupPreference,
+                translationViewModel = translationViewModel
+            )
         }
-        MenuSection.About -> MenuSubPage(title = "About us", onBack = onBackToMenu) {
+        MenuSection.About -> MenuSubPage(title = strings("About us"), onBack = onBackToMenu) {
             AboutPage()
         }
     }
@@ -70,6 +79,7 @@ fun MenuPage(
 
 @Composable
 private fun MenuHome(onOpenDestination: (MenuSection) -> Unit) {
+    val strings = LocalAppStrings.current
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
@@ -77,33 +87,33 @@ private fun MenuHome(onOpenDestination: (MenuSection) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text("Menu", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(strings("Menu"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
         }
         item {
             MenuItem(
-                title = "Learn",
+                title = strings("Learn"),
                 icon = Icons.Outlined.NotificationsActive,
                 onClick = { onOpenDestination(MenuSection.Learn) }
             )
         }
         item {
             MenuItem(
-                title = "Import",
+                title = strings("Import"),
                 icon = Icons.Outlined.CloudDownload,
                 onClick = { onOpenDestination(MenuSection.Import) }
             )
         }
         item {
             MenuItem(
-                title = "Settings",
+                title = strings("Settings"),
                 icon = Icons.Outlined.Settings,
                 onClick = { onOpenDestination(MenuSection.Settings) }
             )
         }
         item {
             MenuItem(
-                title = "About us",
+                title = strings("About us"),
                 icon = Icons.Outlined.Info,
                 onClick = { onOpenDestination(MenuSection.About) }
             )
@@ -117,6 +127,7 @@ private fun MenuSubPage(
     onBack: () -> Unit,
     content: @Composable () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -125,7 +136,7 @@ private fun MenuSubPage(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back to menu")
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = strings("Back to menu"))
             }
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
@@ -167,14 +178,20 @@ private fun MenuItem(
 
 @Composable
 private fun AboutPage() {
+    val strings = LocalAppStrings.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Yalda", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text("A vocabulary app for building and reviewing language libraries.")
-        Text("Version 1.0", style = MaterialTheme.typography.bodySmall)
+        Text(strings("Yalda"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(strings("A vocabulary app for building and reviewing language libraries."))
+        Text(strings("Offline translations are powered by Google Translate."))
+        Text(
+            strings("Non-English language pairs may translate through English and can have lower quality."),
+            style = MaterialTheme.typography.bodySmall
+        )
+        Text(strings("Version {0}", "1.0"), style = MaterialTheme.typography.bodySmall)
     }
 }

@@ -9,8 +9,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,15 +22,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import com.shdarv.yalda.localization.AppStringCatalog
+import com.shdarv.yalda.localization.LocalAppStrings
 import com.shdarv.yalda.navigation.AppSection
-import com.shdarv.yalda.pages.CategoriesPage
+import com.shdarv.yalda.pages.HomePage
 import com.shdarv.yalda.pages.CreateProfilePage
 import com.shdarv.yalda.pages.MainHeader
 import com.shdarv.yalda.pages.MenuPage
 import com.shdarv.yalda.pages.MenuSection
 import com.shdarv.yalda.pages.QuizPage
 import com.shdarv.yalda.pages.SearchPage
-import com.shdarv.yalda.pages.WordsPage
+import com.shdarv.yalda.pages.ProfileManagerSheet
 import com.shdarv.yalda.ui.YaldaTheme
 import com.shdarv.yalda.viewmodel.rememberCategoriesViewModel
 import com.shdarv.yalda.viewmodel.rememberProfilesViewModel
@@ -49,30 +56,48 @@ fun App() {
     val translationViewModel = rememberTranslationViewModel()
 
     val selectedProfile by profilesViewModel.selectedProfile.collectAsState()
+    val profiles by profilesViewModel.profiles.collectAsState()
+    val setupPreferences by profilesViewModel.setupPreferences.collectAsState()
+    val profilesLoaded by profilesViewModel.isLoaded.collectAsState()
+    val profileMessage by profilesViewModel.message.collectAsState()
     val categories by categoriesViewModel.categoriesForProfile.collectAsState()
     val wordCounts by categoriesViewModel.wordCountsForProfile.collectAsState()
-    val wordsForCategory by wordsViewModel.wordsInCategoryForProfile.collectAsState()
-    val wordsForProfile by wordsViewModel.wordsForProfile.collectAsState()
 
-    var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var currentSection by rememberSaveable { mutableStateOf(AppSection.Categories) }
+    val homeStateHolder = rememberSaveableStateHolder()
+    var currentSection by rememberSaveable { mutableStateOf(AppSection.Home) }
     var menuSection by rememberSaveable { mutableStateOf(MenuSection.Home) }
     var showCreateProfile by rememberSaveable { mutableStateOf(false) }
+    var showProfileManager by rememberSaveable { mutableStateOf(false) }
+    val selectedSetupPreference = selectedProfile?.id?.let(setupPreferences::get)
+    val showSetupWizard = profilesLoaded && (profiles.isEmpty() || showCreateProfile)
+    val appLanguage = selectedProfile?.sourceLanguage ?: "en"
+    val strings = remember(appLanguage) { AppStringCatalog.stringsFor(appLanguage) }
 
     LaunchedEffect(selectedProfile?.id) {
         categoriesViewModel.setActiveProfileId(selectedProfile?.id)
         wordsViewModel.setActiveProfile(selectedProfile?.id)
         searchViewModel.setActiveProfile(selectedProfile?.id)
+        translationViewModel.setActivePair(
+            selectedProfile?.sourceLanguage,
+            selectedProfile?.targetLanguage
+        )
     }
 
-    LaunchedEffect(selectedCategoryId) {
-        wordsViewModel.setActiveCategory(selectedCategoryId)
+    LaunchedEffect(selectedProfile?.id, selectedSetupPreference?.selectedDatasetPackIdsJson) {
+        storeViewModel.setActiveProfile(
+            selectedProfile,
+            selectedProfile?.id?.let(profilesViewModel::selectedPackIds) ?: emptySet()
+        )
     }
 
-    YaldaTheme {
-        Scaffold(
+    CompositionLocalProvider(
+        LocalAppStrings provides strings,
+        LocalLayoutDirection provides if (appLanguage == "fa") LayoutDirection.Rtl else LayoutDirection.Ltr
+    ) {
+        YaldaTheme {
+            Scaffold(
             bottomBar = {
-                if (!showCreateProfile) {
+                if (!showSetupWizard) {
                     NavigationBar {
                         AppSection.entries.forEach { section ->
                             NavigationBarItem(
@@ -83,8 +108,8 @@ fun App() {
                                         menuSection = MenuSection.Home
                                     }
                                 },
-                                icon = { androidx.compose.material3.Icon(section.icon, contentDescription = section.label) },
-                                label = { Text(section.label, fontSize = 11.sp, maxLines = 1) },
+                                icon = { androidx.compose.material3.Icon(section.icon, contentDescription = strings(section.label)) },
+                                label = { Text(strings(section.label), fontSize = 11.sp, maxLines = 1) },
                                 alwaysShowLabel = true
                             )
                         }
@@ -99,41 +124,73 @@ fun App() {
                     .padding(padding)
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    if (showCreateProfile) {
+                    if (!profilesLoaded) {
+                        Box(Modifier.fillMaxSize()) {
+                            CircularProgressIndicator()
+                        }
+                    } else if (showSetupWizard) {
                         CreateProfilePage(
-                            onBack = { showCreateProfile = false },
-                            onCreateProfile = { name, source, target ->
-                                profilesViewModel.addProfile(name, source, target)
+                            canDismiss = profiles.isNotEmpty(),
+                            catalogPacks = storeViewModel.packs,
+                            isCatalogLoading = storeViewModel.isCatalogLoading,
+                            catalogMessage = storeViewModel.catalogMessage,
+                            onRetryCatalog = storeViewModel::loadFromNetwork,
+                            onBack = { if (profiles.isNotEmpty()) showCreateProfile = false },
+                            onCreateProfile = { name, source, target, selectedPackIds, prepareOffline ->
+                                profilesViewModel.addProfile(
+                                    name,
+                                    source,
+                                    target,
+                                    selectedPackIds,
+                                    prepareOffline
+                                )
                                 showCreateProfile = false
                             }
                         )
                     } else {
                         MainHeader(
-                            profileName = selectedProfile?.name ?: "Your Library"
+                            profileName = selectedProfile?.name ?: strings("Your Library"),
+                            sourceLanguage = selectedProfile?.sourceLanguage,
+                            targetLanguage = selectedProfile?.targetLanguage,
+                            onProfileClick = { showProfileManager = true }
                         )
                         when (currentSection) {
-                            AppSection.Categories -> CategoriesPage(
-                                categories = categories,
+                            AppSection.Home -> selectedProfile?.let { profile ->
+                                homeStateHolder.SaveableStateProvider(profile.id) {
+                                    HomePage(
+                                        sourceLanguage = profile.sourceLanguage,
+                                        targetLanguage = profile.targetLanguage,
+                                        categories = categories.filter { it.profileIdFk == profile.id },
+                                        translationViewModel = translationViewModel,
+                                        onOpenSettings = {
+                                            menuSection = MenuSection.Settings
+                                            currentSection = AppSection.Menu
+                                        },
+                                        onAddCategory = { categoriesViewModel.addCategory(it) },
+                                        onSaveWord = { word, meaning, categoryId, onComplete ->
+                                            wordsViewModel.addWordEntry(
+                                                word = word,
+                                                meaning = meaning,
+                                                description = null,
+                                                categoryIdOverride = categoryId,
+                                                profileIdOverride = profile.id,
+                                                onComplete = onComplete
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                            AppSection.Search -> SearchPage(
+                                searchViewModel = searchViewModel,
+                                profileId = selectedProfile?.id,
+                                allCategories = categories,
                                 wordCounts = wordCounts,
-                                selectedCategoryId = selectedCategoryId,
-                                onSelectCategory = { category ->
-                                    selectedCategoryId = category.id
-                                    currentSection = AppSection.Words
-                                },
-                                onAddCategory = { categoriesViewModel.addCategory(it) },
-                                onUpdateCategory = { categoriesViewModel.updateCategory(it) },
-                                onDeleteCategory = { categoriesViewModel.deleteCategory(it) }
-                            )
-                            AppSection.Words -> WordsPage(
-                                categories = categories,
-                                selectedCategoryId = selectedCategoryId,
-                                words = if (selectedCategoryId == null) wordsForProfile else wordsForCategory,
                                 sourceLanguage = selectedProfile?.sourceLanguage,
                                 targetLanguage = selectedProfile?.targetLanguage,
                                 translationViewModel = translationViewModel,
-                                onSelectCategory = { category ->
-                                    selectedCategoryId = category?.id
-                                },
+                                onAddCategory = { categoriesViewModel.addCategory(it) },
+                                onUpdateCategory = { categoriesViewModel.updateCategory(it) },
+                                onDeleteCategory = { categoriesViewModel.deleteCategory(it) },
                                 onAddWord = { word, meaning, description, categoryId ->
                                     wordsViewModel.addWordEntry(
                                         word = word,
@@ -146,18 +203,6 @@ fun App() {
                                 onUpdateWord = { wordsViewModel.updateWordEntry(it) },
                                 onDeleteWord = { wordsViewModel.deleteWordEntry(it) }
                             )
-                            AppSection.Search -> SearchPage(
-                                searchViewModel = searchViewModel,
-                                categoriesById = categories.associateBy { it.id },
-                                onOpenCategory = { category ->
-                                    selectedCategoryId = category.id
-                                    currentSection = AppSection.Words
-                                },
-                                onOpenWord = { word ->
-                                    selectedCategoryId = word.categoryIdFk
-                                    currentSection = AppSection.Words
-                                }
-                            )
                             AppSection.Quiz -> QuizPage(
                                 profileId = selectedProfile?.id,
                                 categories = categories,
@@ -166,6 +211,8 @@ fun App() {
                             AppSection.Menu -> MenuPage(
                                 destination = menuSection,
                                 profile = selectedProfile,
+                                profiles = profiles,
+                                setupPreference = selectedSetupPreference,
                                 storeViewModel = storeViewModel,
                                 translationViewModel = translationViewModel,
                                 onOpenDestination = { menuSection = it },
@@ -174,6 +221,27 @@ fun App() {
                         }
                     }
                 }
+            }
+        }
+
+            if (showProfileManager && !showSetupWizard) {
+                ProfileManagerSheet(
+                profiles = profiles,
+                selectedProfile = selectedProfile,
+                message = profileMessage,
+                onDismiss = { showProfileManager = false },
+                onSwitch = {
+                    profilesViewModel.setSelectedProfile(it)
+                    showProfileManager = false
+                },
+                onCreate = {
+                    showProfileManager = false
+                    showCreateProfile = true
+                },
+                onRename = profilesViewModel::updateProfile,
+                onDelete = profilesViewModel::deleteProfile,
+                onClearMessage = profilesViewModel::clearMessage
+                )
             }
         }
     }

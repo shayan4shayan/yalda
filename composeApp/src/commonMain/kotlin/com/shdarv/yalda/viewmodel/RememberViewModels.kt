@@ -58,7 +58,7 @@ inline fun <reified T : ViewModel> rememberSingletonViewModel(
 fun rememberProfilesViewModel(key: String = "profiles"): ProfilesViewModel =
     rememberSingletonViewModel(key) {
         ProfilesViewModel(
-            profileDao = database.get().profileDao(), wordEntryDao = database.get().wordEntryDao()
+            profileDao = database.get().profileDao(), settings = com.shdarv.yalda.platform.appSettings.get()
         )
     }
 
@@ -81,7 +81,10 @@ fun rememberWordsViewModel(key: String = "words"): WordsViewModel =
 @Composable
 fun rememberWordStoreViewModel(key: String = "store") : WordsStoreViewModel =
     rememberSingletonViewModel(key) {
-        WordsStoreViewModel()
+        WordsStoreViewModel(
+            appDatabase = database.get(),
+            settings = com.shdarv.yalda.platform.appSettings.get()
+        )
     }
 
 @Composable

@@ -1,0 +1,4 @@
+Vazirmatn v33.003
+Source: https://github.com/rastikerdar/vazirmatn/tree/v33.003
+Unmodified fonts/ttf/Vazirmatn-{Regular,Medium,SemiBold,Bold}.ttf
+License: SIL Open Font License 1.1 (see Vazirmatn-OFL.txt).

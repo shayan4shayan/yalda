@@ -80,7 +80,8 @@ class WordsViewModel(
         meaning: String,
         description: String?,
         categoryIdOverride: Long? = null,
-        profileIdOverride: Long? = null
+        profileIdOverride: Long? = null,
+        onComplete: ((Boolean) -> Unit)? = null
     ) {
         val currentProfileId = profileIdOverride ?: _activeProfileId.value
         val currentCategoryId = categoryIdOverride ?: _activeCategoryId.value
@@ -88,6 +89,7 @@ class WordsViewModel(
         if (currentProfileId == null || currentCategoryId == null) {
             // Handle error: profile or category not selected
             println("Error: Profile or Category not selected to add word.")
+            onComplete?.invoke(false)
             return
         }
 
@@ -97,14 +99,17 @@ class WordsViewModel(
                 meaning = meaning,
                 description = description,
                 categoryIdFk = currentCategoryId,
-                profileIdFk = currentProfileId
+                profileIdFk = currentProfileId,
+                isUserModified = true
             )
             try {
                 wordEntryDao.insertWordEntry(newWordEntry)
+                onComplete?.invoke(true)
                 // Flow will update the list
             } catch (e: Exception) {
                 // Handle potential constraint violations (e.g., unique word in profile)
                 println("Error adding word: ${e.message}")
+                onComplete?.invoke(false)
                 // You might want to show a user-facing error message here
             }
         }
@@ -119,7 +124,7 @@ class WordsViewModel(
             // the wordEntry object is correctly sourced.
         }
         viewModelScope.launch {
-            wordEntryDao.updateWordEntry(wordEntry)
+            wordEntryDao.updateWordEntry(wordEntry.copy(isUserModified = true))
             // Flow will update the list
         }
     }

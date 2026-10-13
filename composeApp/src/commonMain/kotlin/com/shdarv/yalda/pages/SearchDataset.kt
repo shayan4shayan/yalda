@@ -18,24 +18,26 @@ import com.shdarv.yalda.viewmodel.rememberProfilesViewModel
 import com.shdarv.yalda.viewmodel.rememberWordStoreViewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudDownload
+import com.shdarv.yalda.localization.LocalAppStrings
 
 
 @Composable
 fun SearchDatasetPageView() {
+    val strings = LocalAppStrings.current
 
     val profilesViewModel = rememberProfilesViewModel()
     val viewModel = rememberWordStoreViewModel()
 
     val selectedProfile by profilesViewModel.selectedProfile.collectAsState()
 
-    val files = viewModel.categories
+    val files = viewModel.orderedPacksForActiveProfile()
 
 
     LazyColumn {
         items(files) {
 
             Row(Modifier.fillMaxWidth().padding(8.dp)) {
-                Text(text = it.name)
+                Text(text = it.title)
 
                 Spacer(Modifier.weight(1f))
 
@@ -44,7 +46,7 @@ fun SearchDatasetPageView() {
                         viewModel.loadAndImportCategory(p, it)
                     }
                 }) {
-                    Icon(Icons.Outlined.CloudDownload, contentDescription = "Import")
+                    Icon(Icons.Outlined.CloudDownload, contentDescription = strings("Import"))
                 }
             }
 

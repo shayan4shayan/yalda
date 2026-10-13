@@ -10,200 +10,123 @@ import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import java.util.LinkedHashMap
 import java.util.Locale
 
-class MlKitLocalTranslationService(context: Context) : LocalTranslationService {
-    private val appContext = context.applicationContext
+class MlKitLocalTranslationService(@Suppress("UNUSED_PARAMETER") context: Context) : LocalTranslationService {
     private val modelManager = RemoteModelManager.getInstance()
-    private val json = Json { ignoreUnknownKeys = true }
-    private val cache = object : LinkedHashMap<String, String>(CACHE_SIZE, 0.75f, true) {
+    private val translators = LinkedHashMap<String, Translator>(TRANSLATOR_CACHE_SIZE, 0.75f, true)
+    private val translationCache = object : LinkedHashMap<String, String>(RESULT_CACHE_SIZE, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
-            size > CACHE_SIZE
+            size > RESULT_CACHE_SIZE
     }
-
-    private var activeModelId: String? = null
-    private var activeTranslator: Translator? = null
 
     override val isSupported: Boolean = true
 
-    private val models: List<TranslationModelInfo> by lazy {
-        loadModelMetadata().filter { model ->
-            model.runtime == MLKIT_RUNTIME &&
-                model.sourceLanguage == ENGLISH &&
-                model.targetLanguage == PERSIAN
-        }
+    override suspend fun downloadedLanguagePacks(): Set<String> = withContext(Dispatchers.IO) {
+        modelManager.getDownloadedModels(TranslateRemoteModel::class.java).await().map { it.language }.toSet()
     }
 
-    override fun availableModels(): List<TranslationModelInfo> = models
-
-    override suspend fun isModelDownloaded(modelId: String): Boolean = withContext(Dispatchers.IO) {
-        val model = models.firstOrNull { it.id == modelId } ?: return@withContext false
-        val targetLanguage = mlKitLanguage(model.targetLanguage) ?: return@withContext false
-        val downloadedModels = modelManager
-            .getDownloadedModels(TranslateRemoteModel::class.java)
-            .await()
-
-        downloadedModels.any { it.language == targetLanguage }
-    }
-
-    override suspend fun downloadModel(
-        modelId: String,
+    override suspend fun downloadPair(
+        pair: TranslationPair,
+        wifiOnly: Boolean,
         onProgress: (TranslationDownloadProgress) -> Unit
-    ): TranslationDownloadResult =
+    ): TranslationDownloadResult = withContext(Dispatchers.IO) {
+        if (translatorOptions(pair) == null) {
+            return@withContext TranslationDownloadResult.Failure("Unsupported translation language pair.")
+        }
+        try {
+            onProgress(TranslationDownloadProgress(message = "Downloading ${pair.displayName} language packs..."))
+            val conditions = DownloadConditions.Builder().apply {
+                if (wifiOnly) requireWifi()
+            }.build()
+            // ML Kit owns the dependency decision, including any English intermediary models.
+            translatorFor(pair).downloadModelIfNeeded(conditions).await()
+            TranslationDownloadResult.Success("${pair.displayName} is ready offline.")
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            TranslationDownloadResult.Failure(exception.readableMessage("Translation download failed."))
+        }
+    }
+
+    override fun cancelPairDownload(pair: TranslationPair) = Unit
+
+    override suspend fun deleteLanguagePack(languageCode: String): TranslationDownloadResult =
         withContext(Dispatchers.IO) {
-            val model = models.firstOrNull { it.id == modelId }
-                ?: return@withContext TranslationDownloadResult.Failure("Translation model was not found.")
-            val remoteModel = remoteModelFor(model)
-                ?: return@withContext TranslationDownloadResult.Failure("Unsupported translation language pair.")
-
+            val language = mlKitLanguage(languageCode)
+                ?: return@withContext TranslationDownloadResult.Failure("Unsupported language pack.")
             try {
-                if (modelManager.isModelDownloaded(remoteModel).await()) {
-                    return@withContext TranslationDownloadResult.Success(model)
-                }
-
-                onProgress(TranslationDownloadProgress(message = "Downloading model..."))
-                val downloadTask = modelManager.download(remoteModel, DownloadConditions.Builder().build())
-                val result = withTimeoutOrNull<TranslationDownloadResult>(DOWNLOAD_TIMEOUT_MS) {
-                    while (!downloadTask.isComplete) {
-                        if (modelManager.isModelDownloaded(remoteModel).await()) {
-                            return@withTimeoutOrNull TranslationDownloadResult.Success(model)
-                        }
-                        delay(DOWNLOAD_POLL_INTERVAL_MS)
-                    }
-
-                    downloadTask.await()
-                    if (modelManager.isModelDownloaded(remoteModel).await()) {
-                        TranslationDownloadResult.Success(model)
-                    } else {
-                        TranslationDownloadResult.Failure("Model download finished, but the model is not ready yet. Try again.")
-                    }
-                }
-
-                result ?: if (modelManager.isModelDownloaded(remoteModel).await()) {
-                    TranslationDownloadResult.Success(model)
-                } else {
-                    TranslationDownloadResult.Failure("Model download timed out. Check your connection and try again.")
-                }
-            } catch (exception: CancellationException) {
-                throw exception
+                closeTranslatorsUsing(languageCode)
+                modelManager.deleteDownloadedModel(TranslateRemoteModel.Builder(language).build()).await()
+                TranslationDownloadResult.Success(
+                    "${TranslationCatalog.languageName(languageCode)} language pack was removed."
+                )
             } catch (exception: Exception) {
-                TranslationDownloadResult.Failure(exception.readableMessage("Model download failed."))
+                TranslationDownloadResult.Failure(exception.readableMessage("Language pack delete failed."))
             }
         }
 
-    override fun cancelModelDownload(modelId: String) = Unit
-
-    override suspend fun deleteModel(modelId: String): TranslationDownloadResult =
+    override suspend fun translate(text: String, pair: TranslationPair): TranslationResult =
         withContext(Dispatchers.IO) {
-            val model = models.firstOrNull { it.id == modelId }
-                ?: return@withContext TranslationDownloadResult.Failure("Translation model was not found.")
-            val remoteModel = remoteModelFor(model)
-                ?: return@withContext TranslationDownloadResult.Failure("Unsupported translation language pair.")
-
-            try {
-                closeActiveTranslator()
-                modelManager.deleteDownloadedModel(remoteModel).await()
-                TranslationDownloadResult.Success(model)
-            } catch (exception: Exception) {
-                TranslationDownloadResult.Failure(exception.readableMessage("Model delete failed."))
-            }
-        }
-
-    override suspend fun translate(text: String, modelId: String): TranslationResult =
-        withContext(Dispatchers.IO) {
-            val model = models.firstOrNull { it.id == modelId }
-                ?: return@withContext TranslationResult.Failure("Translation model was not found.")
-            if (!isModelDownloaded(modelId)) {
-                return@withContext TranslationResult.ModelNotDownloaded(model)
-            }
-
+            if (!isPairReady(pair)) return@withContext TranslationResult.PairNotReady(pair)
             val normalizedInput = text.trim()
-            val cacheKey = cacheKey(model, normalizedInput)
-            synchronized(cache) {
-                cache[cacheKey]?.let { return@withContext TranslationResult.Success(it) }
+            val cacheKey = "${pair.id}|${normalizedInput.lowercase(Locale.ROOT)}"
+            synchronized(translationCache) {
+                translationCache[cacheKey]?.let { return@withContext TranslationResult.Success(it) }
             }
-
             try {
-                val translated = translatorFor(model).translate(normalizedInput).await()
-                synchronized(cache) {
-                    cache[cacheKey] = translated
-                }
+                val translated = translatorFor(pair).translate(normalizedInput).await()
+                synchronized(translationCache) { translationCache[cacheKey] = translated }
                 TranslationResult.Success(translated)
             } catch (exception: Exception) {
                 TranslationResult.Failure(exception.readableMessage("Translation failed."))
             }
         }
 
-    private fun loadModelMetadata(): List<TranslationModelInfo> =
-        runCatching {
-            appContext.assets.open(METADATA_ASSET).bufferedReader().use { reader ->
-                json.decodeFromString<List<TranslationModelInfo>>(reader.readText())
-            }
-        }.getOrElse {
-            listOf(TranslationCatalog.defaultEnFaModel)
-        }
-
     @Synchronized
-    private fun translatorFor(model: TranslationModelInfo): Translator {
-        if (activeModelId != model.id || activeTranslator == null) {
-            activeTranslator?.close()
-            activeTranslator = Translation.getClient(
-                translatorOptions(model) ?: error("Unsupported translation language pair.")
-            )
-            activeModelId = model.id
+    private fun translatorFor(pair: TranslationPair): Translator {
+        translators[pair.id]?.let { return it }
+        val options = translatorOptions(pair) ?: error("Unsupported translation language pair.")
+        val translator = Translation.getClient(options)
+        translators[pair.id] = translator
+        while (translators.size > TRANSLATOR_CACHE_SIZE) {
+            val oldest = translators.entries.first()
+            oldest.value.close()
+            translators.remove(oldest.key)
         }
-        return activeTranslator ?: error("Translator was not initialized.")
+        return translator
     }
 
     @Synchronized
-    private fun closeActiveTranslator() {
-        activeTranslator?.close()
-        activeTranslator = null
-        activeModelId = null
+    private fun closeTranslatorsUsing(languageCode: String) {
+        val pairIds = TranslationCatalog.directedPairs
+            .filter { languageCode in it.requiredLanguagePacks }
+            .map(TranslationPair::id)
+            .toSet()
+        translators.entries.removeAll { entry ->
+            if (entry.key in pairIds) entry.value.close()
+            entry.key in pairIds
+        }
+        translationCache.keys.removeAll { key -> pairIds.any { pairId -> key.startsWith("$pairId|") } }
     }
 
-    private fun translatorOptions(model: TranslationModelInfo): TranslatorOptions? {
-        val sourceLanguage = mlKitLanguage(model.sourceLanguage) ?: return null
-        val targetLanguage = mlKitLanguage(model.targetLanguage) ?: return null
-        return TranslatorOptions.Builder()
-            .setSourceLanguage(sourceLanguage)
-            .setTargetLanguage(targetLanguage)
-            .build()
+    private fun translatorOptions(pair: TranslationPair): TranslatorOptions? {
+        val source = mlKitLanguage(pair.sourceLanguage) ?: return null
+        val target = mlKitLanguage(pair.targetLanguage) ?: return null
+        return TranslatorOptions.Builder().setSourceLanguage(source).setTargetLanguage(target).build()
     }
 
     private fun mlKitLanguage(languageCode: String): String? =
         TranslateLanguage.fromLanguageTag(languageCode)
 
-    private fun remoteModelFor(model: TranslationModelInfo): TranslateRemoteModel? {
-        val targetLanguage = mlKitLanguage(model.targetLanguage) ?: return null
-        return TranslateRemoteModel.Builder(targetLanguage).build()
-    }
-
-    private fun cacheKey(model: TranslationModelInfo, input: String): String =
-        listOf(
-            model.runtime,
-            model.id,
-            model.sourceLanguage,
-            model.targetLanguage,
-            input.lowercase(Locale.ROOT)
-        ).joinToString(separator = "|")
-
     private fun Exception.readableMessage(fallback: String): String =
-        localizedMessage?.takeIf { it.isNotBlank() } ?: fallback
+        localizedMessage?.takeIf(String::isNotBlank) ?: fallback
 
     private companion object {
-        const val CACHE_SIZE = 100
-        const val METADATA_ASSET = "model_metadata.json"
-        const val MLKIT_RUNTIME = "mlkit"
-        const val ENGLISH = "en"
-        const val PERSIAN = "fa"
-        const val DOWNLOAD_POLL_INTERVAL_MS = 1_000L
-        const val DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1_000L
+        const val RESULT_CACHE_SIZE = 100
+        const val TRANSLATOR_CACHE_SIZE = 8
     }
 }
