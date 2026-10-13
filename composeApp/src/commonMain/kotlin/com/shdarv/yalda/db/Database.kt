@@ -23,11 +23,12 @@ expect object AppDatabaseCtor : RoomDatabaseConstructor<AppDatabase> {
 
 @ConstructedBy(AppDatabaseCtor::class)
 @Database(
-    entities = [Profile::class, Category::class, WordEntry::class, ProfileSetupPreference::class],
-    version = 2,
+    entities = [Profile::class, Category::class, WordEntry::class, ProfileSetupPreference::class, AuditEvent::class],
+    version = 3,
     exportSchema = true // Recommended to keep schema history
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun auditDao(): AuditDao
     abstract fun profileDao(): ProfileDao
     abstract fun categoryDao(): CategoryDao
     abstract fun wordEntryDao(): WordEntryDao
@@ -39,7 +40,8 @@ fun getRoomDatabase(
     builder: RoomDatabase.Builder<AppDatabase>
 ): AppDatabase {
     return builder
-        .addMigrations(MIGRATION_1_2)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+        .addCallback(AUDIT_CALLBACK)
         .setDriver(BundledSQLiteDriver())
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()

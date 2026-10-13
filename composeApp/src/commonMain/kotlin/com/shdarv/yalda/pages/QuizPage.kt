@@ -39,6 +39,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.collectAsState
+import com.shdarv.yalda.audit.QuizAuditSession
+import com.shdarv.yalda.audit.AuditTrail
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -88,13 +93,14 @@ fun QuizPage(
     var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
     var selectedQuizType by remember { mutableStateOf(QuizType.MultipleChoice) }
     var categoryMenuOpen by remember { mutableStateOf(false) }
-    var wordPool by remember { mutableStateOf<List<WordEntry>>(emptyList()) }
 
     val profileCategories = categories.filter { it.profileIdFk == profileId }
     val scopedCategoryId = selectedCategoryId?.takeIf { categoryId ->
         profileCategories.any { it.id == categoryId }
     }
     val selectedCategory = profileCategories.firstOrNull { it.id == scopedCategoryId }
+    var wordPool by remember(profileId, scopedCategoryId) { mutableStateOf<List<WordEntry>>(emptyList()) }
+    val auditWriteFailed by AuditTrail.writeFailed.collectAsState()
     val categoryLabel = selectedCategory?.name ?: strings("All categories")
 
     LaunchedEffect(profileId) {
@@ -200,10 +206,20 @@ fun QuizPage(
             return@Column
         }
 
-        when (selectedQuizType) {
-            QuizType.MultipleChoice -> MultipleChoiceQuiz(wordPool)
-            QuizType.Spelling -> SpellingQuiz(wordPool)
-            QuizType.Speaking -> SpeakingQuiz(wordPool)
+        if (auditWriteFailed) {
+            Text(strings("History could not be saved. Retrying…"), color = MaterialTheme.colorScheme.error)
+        }
+        key(profileId, scopedCategoryId, selectedQuizType) {
+            val audit = remember {
+                QuizAuditSession(profileId, scopedCategoryId, selectedQuizType.name,
+                    profileCategories.associate { it.id to it.name })
+            }
+            DisposableEffect(audit) { onDispose { audit.close() } }
+            when (selectedQuizType) {
+                QuizType.MultipleChoice -> MultipleChoiceQuiz(wordPool, audit)
+                QuizType.Spelling -> SpellingQuiz(wordPool, audit)
+                QuizType.Speaking -> SpeakingQuiz(wordPool, audit)
+            }
         }
     }
 }
@@ -276,7 +292,7 @@ private val QuizType.icon: ImageVector
     }
 
 @Composable
-private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
+private fun MultipleChoiceQuiz(wordPool: List<WordEntry>, audit: QuizAuditSession) {
     val strings = LocalAppStrings.current
     var question by remember { mutableStateOf<MultipleChoiceQuestion?>(null) }
     var feedback by remember { mutableStateOf("") }
@@ -291,6 +307,7 @@ private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
         val distractors = wordPool.shuffled().filter { it.wordId != correctWord.wordId }.take(3)
         val options = (distractors.map { it.meaning } + correctWord.meaning).shuffled()
         question = MultipleChoiceQuestion(correctWord, options, correctWord.meaning)
+        audit.showQuestion(correctWord)
         feedback = ""
         selectedOption = null
     }
@@ -323,6 +340,7 @@ private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
                     isSelected = selectedOption == option,
                     isCorrect = selectedOption == option && option == q.correct,
                     onClick = {
+                        if (!audit.answer(q.word, option, option == q.correct)) return@QuizOptionButton
                         selectedOption = option
                         feedback = if (option == q.correct) {
                             strings("Correct.")
@@ -361,7 +379,7 @@ private fun MultipleChoiceQuiz(wordPool: List<WordEntry>) {
 }
 
 @Composable
-private fun SpellingQuiz(wordPool: List<WordEntry>) {
+private fun SpellingQuiz(wordPool: List<WordEntry>, audit: QuizAuditSession) {
     val strings = LocalAppStrings.current
     val ttsEngine = rememberTtsEngine()
     var currentWord by remember { mutableStateOf<WordEntry?>(null) }
@@ -371,6 +389,7 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
     fun nextWord() {
         if (wordPool.isNotEmpty()) {
             currentWord = wordPool.random()
+            audit.showQuestion(checkNotNull(currentWord))
             input = ""
             feedback = ""
         }
@@ -441,6 +460,7 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
                 value = input,
                 onValueChange = { input = it },
                 label = { Text(strings("Type the word")) },
+                enabled = !audit.isSolved,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -460,13 +480,16 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
             ) {
                 Button(
                     onClick = {
-                        feedback = if (input.trim().equals(word.word, ignoreCase = true)) {
+                        val correct = input.trim().equals(word.word, ignoreCase = true)
+                        if (!audit.answer(word, input, correct)) return@Button
+                        feedback = if (correct) {
                             strings("Correct.")
                         } else {
                             strings("Not quite. It was {0}.", word.word)
                         }
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    enabled = input.isNotBlank() && !audit.isSolved
                 ) {
                     Text(strings("Check"))
                 }
@@ -492,7 +515,7 @@ private fun SpellingQuiz(wordPool: List<WordEntry>) {
 }
 
 @Composable
-private fun SpeakingQuiz(wordPool: List<WordEntry>) {
+private fun SpeakingQuiz(wordPool: List<WordEntry>, audit: QuizAuditSession) {
     val strings = LocalAppStrings.current
     val speechEngine = rememberSpeechEngine()
     val ttsEngine = rememberTtsEngine()
@@ -500,11 +523,17 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
     var heard by remember { mutableStateOf("") }
     var feedback by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
+    var speechGeneration by remember { mutableStateOf(0) }
+    DisposableEffect(speechEngine) {
+        onDispose { speechGeneration++; speechEngine.stop() }
+    }
 
     fun nextWord() {
         if (wordPool.isNotEmpty()) {
+            speechGeneration++
             speechEngine.stop()
             currentWord = wordPool.random()
+            audit.showQuestion(checkNotNull(currentWord))
             heard = ""
             feedback = ""
             isListening = false
@@ -512,7 +541,7 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
     }
 
     LaunchedEffect(wordPool) {
-        nextWord()
+        if (speechEngine.isSupported) nextWord()
     }
 
     if (wordPool.isEmpty()) {
@@ -563,8 +592,14 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
                     onClick = {
                         heard = ""
                         feedback = ""
+                        val generation = ++speechGeneration
                         speechEngine.startListening(
-                            onResult = {
+                            onResult = result@{
+                                if (generation != speechGeneration) return@result
+                                if (!audit.answer(word, it, it.trim().equals(word.word, ignoreCase = true))) {
+                                    isListening = false
+                                    return@result
+                                }
                                 isListening = false
                                 heard = it
                                 feedback = if (it.trim().equals(word.word, ignoreCase = true)) {
@@ -573,16 +608,17 @@ private fun SpeakingQuiz(wordPool: List<WordEntry>) {
                                     strings("Heard “{0}”. Try again.", it)
                                 }
                             },
-                            onError = { error ->
+                            onError = error@{ error ->
+                                if (generation != speechGeneration) return@error
                                 isListening = false
                                 feedback = strings(error)
                             },
                             onListeningChanged = { listening ->
-                                isListening = listening
+                                if (generation == speechGeneration) isListening = listening
                             }
                         )
                     },
-                    enabled = !isListening,
+                    enabled = !isListening && !audit.isSolved,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp)
                 ) {

@@ -25,6 +25,13 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.shdarv.yalda.R
+import com.shdarv.yalda.audit.wordAlertEvent
+import com.shdarv.yalda.db.AuditAction
+import com.shdarv.yalda.db.WordEntry
+import com.shdarv.yalda.db.newAuditId
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import com.shdarv.yalda.db.database
 import com.shdarv.yalda.db.getDatabaseBuilder
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +49,7 @@ private const val PROFILE_IDS_KEY = "profile_ids"
 private const val ACTION_DAILY_WORD_REMINDER = "com.shdarv.yalda.action.DAILY_WORD_REMINDER"
 private const val DAY_MINUTES = 24 * 60
 internal const val KEY_PROFILE_ID = "profile_id"
+internal const val KEY_IS_SAMPLE = "is_sample"
 
 private class AndroidNotificationScheduler(private val context: Context) : NotificationScheduler {
     override val isSupported: Boolean = true
@@ -101,7 +109,7 @@ private class AndroidNotificationScheduler(private val context: Context) : Notif
         val appContext = context.applicationContext
         ensureChannel(appContext)
         val request = OneTimeWorkRequestBuilder<WordNotificationWorker>()
-            .setInputData(workDataOf(KEY_PROFILE_ID to profileId))
+            .setInputData(workDataOf(KEY_PROFILE_ID to profileId, KEY_IS_SAMPLE to true))
             .build()
         WorkManager.getInstance(appContext).enqueue(request)
     }
@@ -124,26 +132,50 @@ internal fun ensureChannel(context: Context) {
     manager.createNotificationChannel(channel)
 }
 
-internal suspend fun showWordNotification(context: Context, title: String, message: String) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
+internal suspend fun showWordNotification(
+    context: Context, word: WordEntry, notificationId: String = newAuditId(), isSample: Boolean = false
+) {
+    val dao = database.get().auditDao()
+    val attempted = wordAlertEvent(AuditAction.ALERT_ATTEMPTED, word, notificationId, isSample)
+    // Persist intent before calling the OS; an interrupted send remains attempted, never falsely sent.
+    dao.append(attempted)
+    fun result(action: String, reason: String? = null) = attempted.copy(
+        eventKey = "$notificationId:$action", action = action,
+        occurredAt = System.currentTimeMillis(),
+        detailsJson = reason?.let { buildJsonObject { put("reason", it) }.toString() }
+    )
+    val manager = NotificationManagerCompat.from(context)
+    val channelBlocked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
+    val permissionDenied = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    if (permissionDenied || !manager.areNotificationsEnabled() || channelBlocked) {
+        dao.append(result(AuditAction.ALERT_BLOCKED, "Notifications or word channel disabled"))
+        return
     }
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(R.mipmap.ic_launcher)
-        .setContentTitle(title)
-        .setContentText(message)
-        .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+        .setContentTitle(word.word)
+        .setContentText(word.meaning)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(word.meaning))
         .setAutoCancel(true)
         .build()
-
-    NotificationManagerCompat.from(context).notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
+    try {
+        manager.notify(notificationId, 0, notification)
+    } catch (error: SecurityException) {
+        dao.append(result(AuditAction.ALERT_BLOCKED, error.message))
+        return
+    } catch (error: Exception) {
+        if (error is CancellationException) throw error
+        dao.append(result(AuditAction.ALERT_FAILED, error.message))
+        return
+    }
+    // Posted is OS acceptance, not evidence that the user read the notification.
+    dao.append(result(AuditAction.ALERT_POSTED))
 }
 
-internal suspend fun loadRandomWord(profileId: Long, context: Context): Pair<String, String>? {
+internal suspend fun loadRandomWord(profileId: Long, context: Context): WordEntry? {
     if (!database.isInitialized()) {
         database.init(getDatabaseBuilder(context))
     }
@@ -152,7 +184,7 @@ internal suspend fun loadRandomWord(profileId: Long, context: Context): Pair<Str
     }
     if (words.isEmpty()) return null
     val word = words.random()
-    return word.word to word.meaning
+    return word
 }
 
 class WordReminderReceiver : BroadcastReceiver() {
@@ -175,11 +207,10 @@ class WordReminderReceiver : BroadcastReceiver() {
                 val word = loadRandomWord(profileId, appContext)
                 ensureChannel(appContext)
                 if (word != null) {
-                    showWordNotification(appContext, word.first, word.second)
+                    showWordNotification(appContext, word)
                 }
-                scheduleNextReminder(appContext, profileId)
             } finally {
-                pendingResult.finish()
+                try { scheduleNextReminder(appContext, profileId) } finally { pendingResult.finish() }
             }
         }
     }

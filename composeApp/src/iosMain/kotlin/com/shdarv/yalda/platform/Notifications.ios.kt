@@ -2,6 +2,14 @@ package com.shdarv.yalda.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.shdarv.yalda.db.*
+import com.shdarv.yalda.audit.wordAlertEvent
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import platform.Foundation.NSNotificationCenter
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import com.shdarv.yalda.db.database
 import com.shdarv.yalda.db.init
 import kotlinx.coroutines.CoroutineScope
@@ -13,6 +21,7 @@ import platform.Foundation.NSCalendarUnitHour
 import platform.Foundation.NSCalendarUnitMinute
 import platform.Foundation.NSCalendarUnitMonth
 import platform.Foundation.NSCalendarUnitYear
+import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.NSDate
 import platform.UserNotifications.*
 import platform.darwin.NSObject
@@ -22,26 +31,66 @@ import kotlin.time.ExperimentalTime
 private const val WORK_ID_PREFIX = "daily_word_"
 private const val DAYS_AHEAD = 7
 
+private val notificationAuditScope = CoroutineScope(Dispatchers.Default)
+
+private fun recordObservedNotification(notification: UNNotification, opened: Boolean = false) {
+    val auditId = notification.request.content.userInfo["auditId"] as? String ?: return
+    notificationAuditScope.launch {
+        if (!database.isInitialized()) database.init()
+        val dao = database.get().auditDao()
+        val original = dao.eventByKey("$auditId:${AuditAction.ALERT_ATTEMPTED}") ?: return@launch
+        dao.append(original.copy(
+            id = 0, eventKey = "$auditId:${AuditAction.ALERT_DELIVERED}",
+            action = AuditAction.ALERT_DELIVERED,
+            occurredAt = (notification.date.timeIntervalSince1970 * 1000).toLong()
+        ))
+        if (opened) dao.append(original.copy(
+            id = 0, eventKey = "$auditId:${AuditAction.ALERT_OPENED}",
+            action = AuditAction.ALERT_OPENED, occurredAt = auditNow()
+        ))
+    }
+}
+
 private class ForegroundNotificationDelegate : NSObject(), UNUserNotificationCenterDelegateProtocol {
     override fun userNotificationCenter(
         center: UNUserNotificationCenter,
         willPresentNotification: UNNotification,
         withCompletionHandler: (UNNotificationPresentationOptions) -> Unit
     ) {
+        recordObservedNotification(willPresentNotification)
         withCompletionHandler(
             UNNotificationPresentationOptionAlert or UNNotificationPresentationOptionSound
         )
     }
+    override fun userNotificationCenter(
+        center: UNUserNotificationCenter,
+        didReceiveNotificationResponse: UNNotificationResponse,
+        withCompletionHandler: () -> Unit
+    ) {
+        recordObservedNotification(didReceiveNotificationResponse.notification, opened = true)
+        withCompletionHandler()
+    }
+
 }
 
 private class IosNotificationScheduler : NotificationScheduler {
     private val center = UNUserNotificationCenter.currentNotificationCenter()
     private val delegate = ForegroundNotificationDelegate()
     private var authorized: Boolean = false
+    private val activationObserver = NSNotificationCenter.defaultCenter.addObserverForName(
+        UIApplicationDidBecomeActiveNotification, null, null
+    ) { reconcileDeliveredNotifications() }
+
+    private fun reconcileDeliveredNotifications() {
+        center.getDeliveredNotificationsWithCompletionHandler { notifications ->
+            notifications?.filterIsInstance<UNNotification>()?.forEach { recordObservedNotification(it) }
+        }
+    }
 
     init {
         center.delegate = delegate
         refreshPermission()
+        reconcileDeliveredNotifications()
     }
 
     override val isSupported: Boolean = true
@@ -61,11 +110,21 @@ private class IosNotificationScheduler : NotificationScheduler {
             val ids = requests
                 ?.filterIsInstance<UNNotificationRequest>()
                 ?.mapNotNull { request ->
-                    (request as? UNNotificationRequest)?.identifier?.takeIf { it.startsWith(WORK_ID_PREFIX + profileId) }
+                    (request as? UNNotificationRequest)?.identifier?.takeIf { it.startsWith("$WORK_ID_PREFIX${profileId}_") }
                 }
                 .orEmpty()
             if (ids.isNotEmpty()) {
                 center.removePendingNotificationRequestsWithIdentifiers(ids)
+                notificationAuditScope.launch {
+                    if (!database.isInitialized()) database.init()
+                    requests?.filterIsInstance<UNNotificationRequest>()?.filter { it.identifier in ids }?.forEach { request ->
+                        val auditId = request.content.userInfo["auditId"] as? String ?: return@forEach
+                        val dao = database.get().auditDao()
+                        val original = dao.eventByKey("$auditId:${AuditAction.ALERT_ATTEMPTED}") ?: return@forEach
+                        dao.append(original.copy(id = 0, eventKey = "$auditId:${AuditAction.ALERT_CANCELED}",
+                            action = AuditAction.ALERT_CANCELED, occurredAt = auditNow()))
+                    }
+                }
             }
             if (enabled) {
                 schedulePendingNotifications(profileId, schedule)
@@ -107,6 +166,7 @@ private class IosNotificationScheduler : NotificationScheduler {
                             }
                             val word = words.random()
                             val content = UNMutableNotificationContent().apply {
+                                setUserInfo(mapOf("auditId" to newAuditId()))
                                 setTitle(word.word)
                                 setBody(word.meaning)
                                 setSound(UNNotificationSound.defaultSound)
@@ -119,7 +179,7 @@ private class IosNotificationScheduler : NotificationScheduler {
                             val request = UNNotificationRequest.requestWithIdentifier(
                                 identifier = identifier, content = content, trigger = trigger
                             )
-                            center.addNotificationRequest(request, null)
+                            scheduleAudited(request, word, profileId)
                         }
                     }
                 }
@@ -150,7 +210,8 @@ private class IosNotificationScheduler : NotificationScheduler {
                                 }
                                 val word = words.random()
                                 val content = UNMutableNotificationContent().apply {
-                                    setTitle(word.word)
+                                    setUserInfo(mapOf("auditId" to newAuditId()))
+                                setTitle(word.word)
                                     setBody(word.meaning)
                                     setSound(UNNotificationSound.defaultSound)
                                 }
@@ -162,7 +223,7 @@ private class IosNotificationScheduler : NotificationScheduler {
                                 val request = UNNotificationRequest.requestWithIdentifier(
                                     identifier = identifier, content = content, trigger = trigger
                                 )
-                                center.addNotificationRequest(request, null)
+                                scheduleAudited(request, word, profileId)
                                 minuteOfDay += intervalMinutes
                             }
                         }
@@ -180,6 +241,7 @@ private class IosNotificationScheduler : NotificationScheduler {
             }
             val word = database.get().wordEntryDao().getWordsForProfile(profileId).randomOrNull()
             val content = UNMutableNotificationContent()
+            content.setUserInfo(mapOf("auditId" to newAuditId()))
             content.setTitle(word?.word ?: "Sample word")
             content.setBody(word?.meaning ?: "Open Yalda to learn a new word.")
             content.setSound(UNNotificationSound.defaultSound)
@@ -190,8 +252,49 @@ private class IosNotificationScheduler : NotificationScheduler {
                 content = content,
                 trigger = trigger
             )
-            center.addNotificationRequest(request, null)
+            scheduleAudited(request, word, profileId, isSample = true)
         }
+    }
+
+    private suspend fun scheduleAudited(
+        request: UNNotificationRequest, word: WordEntry?, profileId: Long, isSample: Boolean = false
+    ) {
+        val auditId = request.content.userInfo["auditId"] as String
+        val trigger = request.trigger
+        val scheduledAt = when (trigger) {
+            is UNCalendarNotificationTrigger -> trigger.nextTriggerDate()
+            is UNTimeIntervalNotificationTrigger -> trigger.nextTriggerDate()
+            else -> null
+        }?.let { (it.timeIntervalSince1970 * 1000).toLong() }
+        val attempted = if (word != null) {
+            wordAlertEvent(AuditAction.ALERT_ATTEMPTED, word, auditId, isSample, scheduledAt)
+        } else AuditEvent(
+            eventKey = "$auditId:${AuditAction.ALERT_ATTEMPTED}", action = AuditAction.ALERT_ATTEMPTED,
+            profileId = profileId, notificationId = auditId, isSample = isSample, scheduledAt = scheduledAt
+        )
+        val dao = database.get().auditDao()
+        dao.append(attempted)
+        val blocked: Boolean = suspendCoroutine { continuation ->
+            center.getNotificationSettingsWithCompletionHandler { settings ->
+                continuation.resume(settings?.authorizationStatus == UNAuthorizationStatusDenied ||
+                    settings?.authorizationStatus == UNAuthorizationStatusNotDetermined)
+            }
+        }
+        if (blocked) {
+            dao.append(attempted.copy(
+                eventKey = "$auditId:${AuditAction.ALERT_BLOCKED}", action = AuditAction.ALERT_BLOCKED,
+                occurredAt = auditNow(), detailsJson = "{\"reason\":\"Notification permission unavailable\"}"
+            ))
+            return
+        }
+        val failure: String? = suspendCoroutine { continuation ->
+            center.addNotificationRequest(request) { error -> continuation.resume(error?.localizedDescription) }
+        }
+        val action = if (failure == null) AuditAction.ALERT_SCHEDULED else AuditAction.ALERT_FAILED
+        dao.append(attempted.copy(
+            eventKey = "$auditId:$action", action = action, occurredAt = auditNow(),
+            detailsJson = failure?.let { buildJsonObject { put("reason", it) }.toString() }
+        ))
     }
 
     private fun refreshPermission() {
@@ -201,6 +304,10 @@ private class IosNotificationScheduler : NotificationScheduler {
     }
 }
 
+private val iosNotificationScheduler by lazy { IosNotificationScheduler() }
+
+internal fun initializeNotificationAudit() { iosNotificationScheduler }
+
 @Composable
 actual fun rememberNotificationScheduler(): NotificationScheduler =
-    remember { IosNotificationScheduler() }
+    remember { iosNotificationScheduler }

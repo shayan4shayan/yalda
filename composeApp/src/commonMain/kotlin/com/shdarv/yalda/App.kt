@@ -158,6 +158,7 @@ fun App() {
                             AppSection.Home -> selectedProfile?.let { profile ->
                                 homeStateHolder.SaveableStateProvider(profile.id) {
                                     HomePage(
+                                        profileId = profile.id,
                                         sourceLanguage = profile.sourceLanguage,
                                         targetLanguage = profile.targetLanguage,
                                         categories = categories.filter { it.profileIdFk == profile.id },

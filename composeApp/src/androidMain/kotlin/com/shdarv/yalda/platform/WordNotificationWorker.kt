@@ -14,7 +14,7 @@ class WordNotificationWorker(
 
         val word = loadRandomWord(profileId, applicationContext) ?: return Result.success()
         ensureChannel(applicationContext)
-        showWordNotification(applicationContext, word.first, word.second)
+        showWordNotification(applicationContext, word, notificationId = id.toString(), isSample = inputData.getBoolean(KEY_IS_SAMPLE, false))
         return Result.success()
     }
 }

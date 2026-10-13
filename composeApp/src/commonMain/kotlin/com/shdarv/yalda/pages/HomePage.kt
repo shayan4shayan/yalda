@@ -20,6 +20,7 @@ import com.shdarv.yalda.translation.TranslationViewModel
 
 @Composable
 fun HomePage(
+    profileId: Long,
     sourceLanguage: String,
     targetLanguage: String,
     categories: List<Category>,
@@ -132,6 +133,7 @@ fun HomePage(
                 message?.let { Text(strings.runtime(it), style = MaterialTheme.typography.bodyMedium) }
             }
         }
+        key(profileId) { HomeStatisticsSection(profileId) }
     }
 
     if (showCategories && !showCreateCategory) {

@@ -1,0 +1,500 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "3810b615cb7e02aeb11b83400f305f2a",
+    "entities": [
+      {
+        "tableName": "profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `sourceLanguage` TEXT NOT NULL, `targetLanguage` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceLanguage",
+            "columnName": "sourceLanguage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetLanguage",
+            "columnName": "targetLanguage",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "categories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `profileIdFk` INTEGER NOT NULL, `datasetPackId` TEXT, `datasetEntryId` TEXT, `installedDatasetVersion` TEXT, `isUserModified` INTEGER NOT NULL, FOREIGN KEY(`profileIdFk`) REFERENCES `profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileIdFk",
+            "columnName": "profileIdFk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "datasetPackId",
+            "columnName": "datasetPackId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "datasetEntryId",
+            "columnName": "datasetEntryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "installedDatasetVersion",
+            "columnName": "installedDatasetVersion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isUserModified",
+            "columnName": "isUserModified",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_categories_profileIdFk",
+            "unique": false,
+            "columnNames": [
+              "profileIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_categories_profileIdFk` ON `${TABLE_NAME}` (`profileIdFk`)"
+          },
+          {
+            "name": "index_categories_profileIdFk_name",
+            "unique": false,
+            "columnNames": [
+              "profileIdFk",
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_categories_profileIdFk_name` ON `${TABLE_NAME}` (`profileIdFk`, `name`)"
+          },
+          {
+            "name": "index_categories_profileIdFk_datasetPackId",
+            "unique": false,
+            "columnNames": [
+              "profileIdFk",
+              "datasetPackId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_categories_profileIdFk_datasetPackId` ON `${TABLE_NAME}` (`profileIdFk`, `datasetPackId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profileIdFk"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "word_entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`wordId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `word` TEXT NOT NULL, `meaning` TEXT NOT NULL, `description` TEXT, `categoryIdFk` INTEGER NOT NULL, `profileIdFk` INTEGER NOT NULL, `datasetPackId` TEXT, `datasetEntryId` TEXT, `installedDatasetVersion` TEXT, `isUserModified` INTEGER NOT NULL, FOREIGN KEY(`categoryIdFk`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`profileIdFk`) REFERENCES `profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "wordId",
+            "columnName": "wordId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "word",
+            "columnName": "word",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meaning",
+            "columnName": "meaning",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "categoryIdFk",
+            "columnName": "categoryIdFk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileIdFk",
+            "columnName": "profileIdFk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "datasetPackId",
+            "columnName": "datasetPackId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "datasetEntryId",
+            "columnName": "datasetEntryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "installedDatasetVersion",
+            "columnName": "installedDatasetVersion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isUserModified",
+            "columnName": "isUserModified",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "wordId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_word_entries_categoryIdFk",
+            "unique": false,
+            "columnNames": [
+              "categoryIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_word_entries_categoryIdFk` ON `${TABLE_NAME}` (`categoryIdFk`)"
+          },
+          {
+            "name": "index_word_entries_profileIdFk",
+            "unique": false,
+            "columnNames": [
+              "profileIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_word_entries_profileIdFk` ON `${TABLE_NAME}` (`profileIdFk`)"
+          },
+          {
+            "name": "index_word_entries_word_profileIdFk",
+            "unique": false,
+            "columnNames": [
+              "word",
+              "profileIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_word_entries_word_profileIdFk` ON `${TABLE_NAME}` (`word`, `profileIdFk`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "categories",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "categoryIdFk"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profileIdFk"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "profile_setup_preferences",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profileIdFk` INTEGER NOT NULL, `selectedDatasetPackIdsJson` TEXT NOT NULL, `prepareOfflineTranslation` INTEGER NOT NULL, PRIMARY KEY(`profileIdFk`), FOREIGN KEY(`profileIdFk`) REFERENCES `profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "profileIdFk",
+            "columnName": "profileIdFk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selectedDatasetPackIdsJson",
+            "columnName": "selectedDatasetPackIdsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prepareOfflineTranslation",
+            "columnName": "prepareOfflineTranslation",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profileIdFk"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_profile_setup_preferences_profileIdFk",
+            "unique": true,
+            "columnNames": [
+              "profileIdFk"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_profile_setup_preferences_profileIdFk` ON `${TABLE_NAME}` (`profileIdFk`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profileIdFk"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "audit_events",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `eventKey` TEXT NOT NULL, `action` TEXT NOT NULL, `occurredAt` INTEGER NOT NULL, `profileId` INTEGER, `categoryId` INTEGER, `wordId` INTEGER, `categoryName` TEXT, `wordText` TEXT, `meaning` TEXT, `sessionId` TEXT, `questionId` TEXT, `quizType` TEXT, `answer` TEXT, `isCorrect` INTEGER, `attemptNumber` INTEGER, `notificationId` TEXT, `scheduledAt` INTEGER, `isSample` INTEGER NOT NULL, `detailsJson` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventKey",
+            "columnName": "eventKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "action",
+            "columnName": "action",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurredAt",
+            "columnName": "occurredAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileId",
+            "columnName": "profileId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "categoryId",
+            "columnName": "categoryId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "wordId",
+            "columnName": "wordId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "categoryName",
+            "columnName": "categoryName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "wordText",
+            "columnName": "wordText",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meaning",
+            "columnName": "meaning",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "questionId",
+            "columnName": "questionId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "quizType",
+            "columnName": "quizType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "answer",
+            "columnName": "answer",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isCorrect",
+            "columnName": "isCorrect",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "attemptNumber",
+            "columnName": "attemptNumber",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "notificationId",
+            "columnName": "notificationId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "scheduledAt",
+            "columnName": "scheduledAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isSample",
+            "columnName": "isSample",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "detailsJson",
+            "columnName": "detailsJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_audit_events_eventKey",
+            "unique": true,
+            "columnNames": [
+              "eventKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_audit_events_eventKey` ON `${TABLE_NAME}` (`eventKey`)"
+          },
+          {
+            "name": "index_audit_events_profileId_occurredAt",
+            "unique": false,
+            "columnNames": [
+              "profileId",
+              "occurredAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_audit_events_profileId_occurredAt` ON `${TABLE_NAME}` (`profileId`, `occurredAt`)"
+          },
+          {
+            "name": "index_audit_events_profileId_categoryId_occurredAt",
+            "unique": false,
+            "columnNames": [
+              "profileId",
+              "categoryId",
+              "occurredAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_audit_events_profileId_categoryId_occurredAt` ON `${TABLE_NAME}` (`profileId`, `categoryId`, `occurredAt`)"
+          },
+          {
+            "name": "index_audit_events_profileId_wordId_occurredAt",
+            "unique": false,
+            "columnNames": [
+              "profileId",
+              "wordId",
+              "occurredAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_audit_events_profileId_wordId_occurredAt` ON `${TABLE_NAME}` (`profileId`, `wordId`, `occurredAt`)"
+          },
+          {
+            "name": "index_audit_events_sessionId_questionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId",
+              "questionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_audit_events_sessionId_questionId` ON `${TABLE_NAME}` (`sessionId`, `questionId`)"
+          },
+          {
+            "name": "index_audit_events_action_occurredAt",
+            "unique": false,
+            "columnNames": [
+              "action",
+              "occurredAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_audit_events_action_occurredAt` ON `${TABLE_NAME}` (`action`, `occurredAt`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3810b615cb7e02aeb11b83400f305f2a')"
+    ]
+  }
+}

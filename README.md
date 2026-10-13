@@ -153,3 +153,89 @@ On iOS, CocoaPods provides `GoogleMLKit/Translate`, and the Swift bridge in `ios
 - Keep Room schema exports in `composeApp/schemas`.
 - Use `gradle/libs.versions.toml` for dependency and plugin versions.
 - After changing iOS CocoaPods dependencies, rerun `pod install --project-directory=iosApp`.
+
+
+## Audit history and learning statistics
+
+Room version 3 adds `audit_events`; migration from version 2 preserves existing data.
+History starts at upgrade time. Events are append-only through `AuditDao`, with UTC
+millisecond timestamps, unique event keys, optional profile/category/word IDs,
+word and meaning snapshots, quiz session/question IDs, raw submitted answers,
+correctness, attempt numbers, notification IDs, and optional JSON details.
+Action names are extensible strings so new features can add events without a migration.
+
+Profile, category, and word inserts, updates, and deletes are captured by SQLite
+triggers, including dataset imports and cascaded deletes. The history write is in
+the same transaction as the mutation. Update/delete details preserve old values.
+Audit rows have no cascading foreign keys: history survives moving, editing, or
+deleting words, categories, and profiles. Statistics attribute activity to the
+category at the time of the event, not a word's current category.
+
+All three quiz modes log session start/end, displayed/skipped questions, and each
+submitted answer. A session ends when leaving the quiz or changing its profile,
+category, or mode; this is open-ended practice, not a fixed-length completed test.
+Retries keep the same question ID and increment `attemptNumber`. Repeated identical
+submissions, blank submissions, and submissions after a correct answer are ignored.
+Speech recognition errors are not incorrect answers. First-answer accuracy excludes
+retries. Sessions with no available questions are not counted.
+
+Notification outcomes are distinct:
+
+- Android: `ALERT_ATTEMPTED`, then `ALERT_POSTED`, `ALERT_BLOCKED`, or `ALERT_FAILED`.
+  Posted means the notification manager accepted the call, not that the user read it.
+- iOS: `ALERT_ATTEMPTED`, then `ALERT_SCHEDULED`, `ALERT_BLOCKED`, or `ALERT_FAILED`.
+  Delivery is recorded separately when observed in the foreground, on a notification
+  response, or by reconciling notifications still in Notification Center at launch/resume.
+  Repeated observations use the same event key and do not double-count delivery.
+  Pending cancellations and notification opens are also logged.
+- Sample alerts are retained in history but excluded from learning alert totals.
+  Scheduled alerts are never counted as delivered. iOS notifications dismissed while
+  the app was inactive may never be observable and cannot be claimed as delivered.
+
+```kotlin
+val audit = database.get().auditDao()
+val general = audit.generalStatistics(profileId)
+val category = audit.categoryStatistics(profileId, categoryId)
+val word = audit.wordStatistics(profileId, wordId)
+val daily = audit.dailyStatistics(profileId = profileId, fromInclusive = startMillis, untilExclusive = endMillis)
+val recent = audit.history(profileId = profileId, limit = 100, offset = 0)
+val quiz = audit.quizHistory(sessionId)
+```
+
+Statistics are observable `Flow`s. Time windows include their start and exclude
+their end; daily buckets use UTC. Totals include correct/incorrect attempts,
+first-answer accuracy, question counts, session counts, and separate alert outcomes.
+Accuracy is null when no answers exist. `quizzesPracticed` counts distinct sessions
+with answers within the requested scope, including mixed-category sessions.
+`quizzesStarted`/`quizzesEnded` count lifecycle events at the selected session scope;
+use `quizzesPracticed` for per-word or mixed-session category participation.
+`statistics()` with no profile filter provides totals across all retained profiles.
+
+For new non-database actions, append an `AuditEvent` with a stable event key when
+retrying. `AuditTrail.record` supplies an app-lifetime ordered queue for UI events,
+with storage retries and a visible quiz error state. Normal navigation does not
+cancel pending writes; abrupt process termination can lose not-yet-persisted UI
+events or leave a session without an end event. Notification sending persists an
+attempt before the OS call. An interruption between OS acceptance and the final
+history write remains an attempt with unknown outcome. Device delivery behavior
+requires physical-device validation.
+
+Verification:
+
+```sh
+./gradlew :composeApp:testDebugUnitTest
+python3 -m unittest discover -s tests -v
+```
+
+The SQL tests execute production migration/trigger/query SQL against SQLite and
+compare the migrated table with Room's exported version 3 schema. Kotlin tests
+cover quiz retry, duplicate, scope, empty-session, and skipped-question behavior.
+
+
+Home displays profile-wide reminders sent, questions answered, and first-answer
+accuracy below the translator. Its selectable seven-day chart uses local-calendar
+days (including daylight-saving changes), fills inactive days with zero, and shows
+questions and reminders separately. `AuditDao.homeStatistics(profileId)` and
+`homeActivity(profileId, nowMillis)` supply these live values. Unlike the audit API's
+UTC daily export, Home uses the device time zone. Samples and scheduled/blocked
+notifications are excluded, and notification IDs are deduplicated across outcomes.
